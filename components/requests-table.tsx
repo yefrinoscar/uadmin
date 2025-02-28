@@ -24,7 +24,7 @@ import {
 import { MoreHorizontal, ChevronDown, ChevronUp } from "lucide-react"
 import { toast } from "sonner"
 import { supabase } from "@/lib/supabase-client"
-import { formatRelative, formatDistance } from "date-fns"
+import { formatDistance } from "date-fns"
 import { es } from "date-fns/locale"
 import { ResponseModal } from "./response-modal"
 import { RequestsTableSkeleton } from "./requests-table-skeleton"
@@ -49,29 +49,24 @@ type PurchaseRequest = {
   price?: number
 }
 
-const mockData: PurchaseRequest[] = Array.from({ length: 10 }, (_, i) => ({
-  id: `req-${i + 1}`,
-  description: `Purchase request for ${["Office supplies", "IT equipment", "Furniture", "Marketing materials", "Software licenses"][Math.floor(Math.random() * 5)]}`,
-  client: {
-    email: `client${i + 1}@example.com`,
-    phone_number: `+1234567${i}`,
-    name: `Client ${i + 1}`,
-  },
-  assigned_user: {
-    id: `user-${i + 1}`,
-    name: ["John Doe", "Jane Smith", "Mike Johnson", "Emily Brown", "Chris Lee"][Math.floor(Math.random() * 5)],
-  },
-  status: ["pending", "approved", "rejected"][Math.floor(Math.random() * 3)] as "pending" | "approved" | "rejected",
-  created_at: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
-  updated_at: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-  price: Math.floor(Math.random() * 10000) + 100,
-}))
+// const mockData: PurchaseRequest[] = Array.from({ length: 10 }, (_, i) => ({
+//   id: `req-${i + 1}`,
+//   description: `Purchase request for ${["Office supplies", "IT equipment", "Furniture", "Marketing materials", "Software licenses"][Math.floor(Math.random() * 5)]}`,
+//   client: {
+//     email: `client${i + 1}@example.com`,
+//     phone_number: `+1234567${i}`,
+//     name: `Client ${i + 1}`,
+//   },
+//   assigned_user: {
+//     id: `user-${i + 1}`,
+//     name: ["John Doe", "Jane Smith", "Mike Johnson", "Emily Brown", "Chris Lee"][Math.floor(Math.random() * 5)],
+//   },
+//   status: ["pending", "approved", "rejected"][Math.floor(Math.random() * 3)] as "pending" | "approved" | "rejected",
+//   created_at: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+//   updated_at: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
+//   price: Math.floor(Math.random() * 10000) + 100,
+// }))
 
-const statuses = [
-  { value: "pending", label: "Pendiente" },
-  { value: "approved", label: "Aprobado" },
-  { value: "rejected", label: "Rechazado" },
-]
 
 export function RequestsTable() {
   const [data, setData] = useState<PurchaseRequest[]>([])
@@ -121,7 +116,7 @@ export function RequestsTable() {
         description: "Failed to fetch requests. Using mock data.",
         //variant: "destructive",
       })
-      setData(mockData)
+      // setData(mockData)
     } else {
       console.log("Fetched data:", data)
       setData(data)
@@ -291,7 +286,7 @@ export function RequestsTable() {
   }
 
   const handleResponseSubmit = async (id: string, response: string) => {
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("purchase_requests")
       .update({ response, updated_at: new Date().toISOString() })
       .eq("id", id)

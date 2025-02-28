@@ -1,5 +1,5 @@
 import { Sidebar } from "@/components/sidebar";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { currentUser } from "@clerk/nextjs/server";
 
 export default async function DashboardLayout({

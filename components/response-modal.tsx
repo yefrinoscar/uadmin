@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { Clipboard, Check, DollarSign, Percent, Save, Sparkles, Bot, BrainCircuit, RefreshCw } from "lucide-react"
+import { Clipboard, Check, DollarSign, Percent, Save, BrainCircuit } from "lucide-react"
 import { toast } from "sonner"
 
 type PurchaseRequest = {
@@ -67,7 +67,6 @@ export function ResponseModal({ isOpen, onClose, request, onSubmit }: ResponseMo
 
   const calculateTotalWithPENMargin = () => {
     const usdTotal = calculatePrice()
-    const penTotal = usdTotal * exchangeRate
     if (!isMarginPercentage) {
       return usdTotal + (marginPEN / exchangeRate)
     }
@@ -131,12 +130,12 @@ export function ResponseModal({ isOpen, onClose, request, onSubmit }: ResponseMo
     }
   }
 
-  const handleSubmit = () => {
-    if (request) {
-      onSubmit(request.id, response)
-      onClose()
-    }
-  }
+  // const handleSubmit = () => {
+  //   if (request) {
+  //     onSubmit(request.id, response)
+  //     onClose()
+  //   }
+  // }
 
   if (!request) return null;
 
