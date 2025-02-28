@@ -10,7 +10,7 @@ const open_sans = Open_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Uadmin",
+  title: "Uadmin ",
   description: "Underla app",
 };
 
