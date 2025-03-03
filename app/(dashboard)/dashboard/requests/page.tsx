@@ -10,7 +10,7 @@ export default function RequestsPage() {
       <div className="flex items-center gap-4 h-10 mb-16">
         <SidebarTrigger />
         <Separator orientation="vertical" className="!h-6" />
-        <h1 className="font-light text-neutral-100 text-sm tracking-tight">Solicitudes de pedidos de compra</h1>
+        <h1 className="font-light text-neutral-100 text-sm tracking-tight">Tabla de solicitudes de pedidos</h1>
       </div>
 
       <div className="flex flex-col gap-5">

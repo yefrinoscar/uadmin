@@ -21,15 +21,15 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { MoreHorizontal, ChevronDown, ChevronUp } from "lucide-react"
+import { MoreHorizontal, ChevronDown, ChevronUp, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
-import { supabase } from "@/lib/supabase-client"
 import { formatDistance } from "date-fns"
 import { es } from "date-fns/locale"
-import { ResponseModal } from "./response-modal"
 import { RequestsTableSkeleton } from "./requests-table-skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
+import { useSupabaseClient } from "@/lib/supabase-client"
+import { useRouter } from "next/navigation"
 
 type PurchaseRequest = {
   id: string
@@ -47,53 +47,35 @@ type PurchaseRequest = {
   created_at: string
   updated_at: string
   price?: number
+  response?: string
 }
-
-// const mockData: PurchaseRequest[] = Array.from({ length: 10 }, (_, i) => ({
-//   id: `req-${i + 1}`,
-//   description: `Purchase request for ${["Office supplies", "IT equipment", "Furniture", "Marketing materials", "Software licenses"][Math.floor(Math.random() * 5)]}`,
-//   client: {
-//     email: `client${i + 1}@example.com`,
-//     phone_number: `+1234567${i}`,
-//     name: `Client ${i + 1}`,
-//   },
-//   assigned_user: {
-//     id: `user-${i + 1}`,
-//     name: ["John Doe", "Jane Smith", "Mike Johnson", "Emily Brown", "Chris Lee"][Math.floor(Math.random() * 5)],
-//   },
-//   status: ["pending", "approved", "rejected"][Math.floor(Math.random() * 3)] as "pending" | "approved" | "rejected",
-//   created_at: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
-//   updated_at: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-//   price: Math.floor(Math.random() * 10000) + 100,
-// }))
-
 
 export function RequestsTable() {
   const [data, setData] = useState<PurchaseRequest[]>([])
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState("")
-  const [isResponseModalOpen, setIsResponseModalOpen] = useState(false)
-  const [selectedRequest, setSelectedRequest] = useState<PurchaseRequest | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isPending, setIsPending] = useState(false)
+  const { getAuthenticatedClient } = useSupabaseClient();
+  const router = useRouter();
+
+  // Function to update a row in the data array
+  const updateRow = (id: string, updates: Partial<PurchaseRequest>) => {
+    setData(prev => 
+      prev.map(row => 
+        row.id === id ? { ...row, ...updates } : row
+      )
+    );
+  };
 
   useEffect(() => {
     fetchRequests()
-
-    const subscription = supabase
-      .channel("public:purchase_requests")
-      .on("postgres_changes", { event: "*", schema: "public", table: "purchase_requests" }, (payload) => {
-        console.log("Change received!", payload)
-        fetchRequests()
-      })
-      .subscribe()
-
-    return () => {
-      subscription.unsubscribe()
-    }
   }, [])
 
   const fetchRequests = async () => {
     setIsLoading(true)
+    const supabase = await getAuthenticatedClient();
+
     const { data, error } = await supabase
       .from("purchase_requests")
       .select(`
@@ -107,16 +89,14 @@ export function RequestsTable() {
         client:clients(email, phone_number, name),
         assigned_user:users(id, name)
       `)
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
       .returns<PurchaseRequest[]>()
 
     if (error) {
       console.error("Error fetching requests:", error)
       toast("Error", {
-        description: "Failed to fetch requests. Using mock data.",
-        //variant: "destructive",
+        description: "Failed to fetch requests.",
       })
-      // setData(mockData)
     } else {
       console.log("Fetched data:", data)
       setData(data)
@@ -129,7 +109,20 @@ export function RequestsTable() {
       {
         accessorKey: "description",
         header: "Descripción",
-        cell: ({ row }) => <div className="font-medium">{row.getValue("description") || "-"}</div>,
+        cell: ({ row }) => (
+          <div className="font-medium flex items-center">
+            {row.getValue("description") || "-"}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="ml-2 h-6 w-6"
+              onClick={() => handleViewDetails(row.original.id)}
+              title="Ver detalles"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ),
       },
       {
         accessorKey: "client.name",
@@ -229,7 +222,6 @@ export function RequestsTable() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Acciones</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => handleResponse(row.original)}>Respuesta</DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleViewDetails(row.original.id)}>Ver detalles</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -255,54 +247,47 @@ export function RequestsTable() {
   })
 
   const handleStatusChange = async (id: string, newStatus: PurchaseRequest["status"]) => {
-    const { error } = await supabase
-      .from("purchase_requests")
-      .update({ status: newStatus, updated_at: new Date().toISOString() })
-      .eq("id", id)
+    // Don't allow updates while another update is in progress
+    if (isPending) return;
+    
+    // Update the timestamp for the UI
+    const timestamp = new Date().toISOString();
+    
+    // Optimistic update
+    updateRow(id, { 
+      status: newStatus, 
+      updated_at: timestamp 
+    });
+    
+    // Mark as pending
+    setIsPending(true);
+    
+    try {
+      const supabase = await getAuthenticatedClient();
+      const { error } = await supabase
+        .from("purchase_requests")
+        .update({ 
+          status: newStatus, 
+          updated_at: timestamp 
+        })
+        .eq("id", id);
 
-    if (error) {
-      console.error("Error updating status:", error)
+      if (error) throw error;
+    } catch (error) {
+      console.error("Error updating status:", error);
+      // Revert on error by fetching fresh data
+      fetchRequests();
       toast("Error", {
-        description: "Failed to update status",
-        //variant: "destructive",
-      })
-    } else {
-      fetchRequests()
-      toast("Success", {
-        description: "Status updated successfully",
-      })
+        description: "No se pudo actualizar el estado",
+      });
+    } finally {
+      // Always mark as not pending when done
+      setIsPending(false);
     }
-  }
-
-  const handleResponse = (request: PurchaseRequest) => {
-    setSelectedRequest({
-      ...request
-    })
-    setIsResponseModalOpen(true)
   }
 
   const handleViewDetails = (id: string) => {
-    window.location.href = `/requests/${id}`
-  }
-
-  const handleResponseSubmit = async (id: string, response: string) => {
-    const { error } = await supabase
-      .from("purchase_requests")
-      .update({ response, updated_at: new Date().toISOString() })
-      .eq("id", id)
-
-    if (error) {
-      console.error("Error submitting response:", error)
-      toast("Error", {
-        description: "Failed to submit response",
-        //variant: "destructive",
-      })
-    } else {
-      fetchRequests()
-      toast("Success", {
-        description: "Response submitted successfully",
-      })
-    }
+    router.push(`/dashboard/requests/${id}`);
   }
 
   return (
@@ -371,13 +356,6 @@ export function RequestsTable() {
           </div>
         </>
       )}
-
-      <ResponseModal
-        isOpen={isResponseModalOpen}
-        onClose={() => setIsResponseModalOpen(false)}
-        request={selectedRequest}
-        onSubmit={handleResponseSubmit}
-      />
     </div>
   )
 }
