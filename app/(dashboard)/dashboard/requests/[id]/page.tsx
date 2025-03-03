@@ -6,7 +6,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardDescription, CardFooter } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -14,7 +14,7 @@ import { toast } from "sonner"
 import { useSupabaseClient } from "@/lib/supabase-client"
 import { formatDistance } from "date-fns"
 import { es } from "date-fns/locale"
-import { ArrowLeft, Search, DollarSign, Save, BrainCircuit, Clipboard, Package, Star } from "lucide-react"
+import { ArrowLeft, Search, Save, BrainCircuit, Package, Star } from "lucide-react"
 import { PricingCalculator } from "@/components/pricing-calculator"
 import { use } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -166,6 +166,7 @@ export default function RequestDetailPage({ params: paramsPromise }: { params: P
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getStoreProductUrl = (product: any) => {
     switch (product.source) {
       case 'amazon':

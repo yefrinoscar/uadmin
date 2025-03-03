@@ -3,10 +3,21 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 import { load } from 'cheerio';
-import type { ScrapedProduct } from '@/lib/scraping/types';
+
+// Define the ScrapedProduct type directly in this file
+export type ScrapedProduct = {
+  title: string
+  price: number
+  link: string
+  image: string | undefined
+  source: string
+  rawPrice: string
+  rating?: number
+  reviews?: number
+}
 
 // In Next.js 15, we use Route Handlers instead of API Routes
-export async function GET(request: { url: string | URL }) {
+export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('query');
@@ -28,7 +39,7 @@ export async function GET(request: { url: string | URL }) {
 
     // Execute scraping only for selected stores
     const results = await Promise.all(
-      stores.map(store => {
+      stores.map((store): Promise<ScrapedProduct[]> => {
         switch (store) {
           case 'amazon': return scrapeAmazon(query);
           case 'ebay': return scrapeEbay(query);
@@ -38,7 +49,7 @@ export async function GET(request: { url: string | URL }) {
           case 'jessupbeauty': return scrapeJessupBeauty(query);
           case 'rarebeauty': return scrapeRareBeauty(query);
           case 'beautycreations': return scrapeBeautyCreations(query);
-          default: return [];
+          default: return Promise.resolve([]);
         }
       })
     );
@@ -131,6 +142,7 @@ async function scrapeJomashop(query: string): Promise<ScrapedProduct[]> {
       throw new Error('Invalid response structure');
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return response.data.data.products.items.map((item: any) => ({
       id: item.sku,
       title: item.name,
@@ -189,7 +201,8 @@ async function scrapeSephora(query: string): Promise<ScrapedProduct[]> {
         'Accept': 'application/json'
       }
     });
-
+    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const products: ScrapedProduct[] = response.data.products?.slice(0, 5).map((item: any) => ({
       title: item.displayName,
       price: item.currentSku.listPrice,
@@ -315,7 +328,6 @@ async function scrapeAmazon(query: string): Promise<ScrapedProduct[]> {
       const title = $(el).find('h2 span').text().trim();
       const priceWhole = $(el).find('.a-price-whole').text().trim();
       const priceFraction = $(el).find('.a-price-fraction').text().trim();
-      const link = 'https://www.amazon.com' + $(el).find('h2 a').attr('href');
       const image = $(el).find('img.s-image').attr('src');
       
       // Only add if we found a valid title and price
@@ -349,7 +361,6 @@ async function scrapeEbay(query: string): Promise<ScrapedProduct[]> {
       if (i >= 5) return false;
       
       const itemUrl = $(el).find('a.s-item__link').attr('href') || '';
-      const itemId = itemUrl.split('/itm/')[1]?.split('?')[0];
       const title = $(el).find('.s-item__title').text().trim();
       const priceText = $(el).find('.s-item__price').text().trim();
       const image = $(el).find('.s-item__image-img').attr('src');
@@ -378,15 +389,3 @@ async function scrapeEbay(query: string): Promise<ScrapedProduct[]> {
     return [];
   }
 }
-
-// Export all scraping functions
-export {
-  scrapeAmazon,
-  scrapeEbay,
-  scrapeJomashop,
-  scrapeFragranceX,
-  scrapeSephora,
-  scrapeJessupBeauty,
-  scrapeRareBeauty,
-  scrapeBeautyCreations
-};

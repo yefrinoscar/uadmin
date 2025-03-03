@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
@@ -36,6 +36,22 @@ export function PricingCalculator({
     setIsMarginPercentage(basePrice <= 50)
   }, [basePrice])
 
+  const calculatePrice = useCallback(() => {
+    const shipping = shippingFixed
+    const tax = basePrice * (taxPercentage / 100)
+    const mobility = mobilityFixed
+    const margin = isMarginPercentage ? basePrice * (marginPercentage / 100) : 0
+    return basePrice + shipping + tax + mobility + margin
+  }, [basePrice, shippingFixed, taxPercentage, mobilityFixed, isMarginPercentage, marginPercentage]);
+
+  const calculateTotalWithPENMargin = useCallback(() => {
+    const usdTotal = calculatePrice()
+    if (!isMarginPercentage) {
+      return usdTotal + (marginPEN / exchangeRate)
+    }
+    return usdTotal
+  }, [calculatePrice, isMarginPercentage, marginPEN, exchangeRate]);
+
   useEffect(() => {
     if (onCalculationsChange) {
       const totalUSD = calculateTotalWithPENMargin()
@@ -45,23 +61,7 @@ export function PricingCalculator({
         exchangeRate
       })
     }
-  }, [basePrice, exchangeRate, marginPEN, marginPercentage, isMarginPercentage])
-
-  const calculatePrice = () => {
-    const shipping = shippingFixed
-    const tax = basePrice * (taxPercentage / 100)
-    const mobility = mobilityFixed
-    const margin = isMarginPercentage ? basePrice * (marginPercentage / 100) : 0
-    return basePrice + shipping + tax + mobility + margin
-  }
-
-  const calculateTotalWithPENMargin = () => {
-    const usdTotal = calculatePrice()
-    if (!isMarginPercentage) {
-      return usdTotal + (marginPEN / exchangeRate)
-    }
-    return usdTotal
-  }
+  }, [exchangeRate, calculateTotalWithPENMargin, onCalculationsChange])
 
   return (
     <div className={`space-y-4 ${className}`}>

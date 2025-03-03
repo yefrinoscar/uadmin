@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import {
   useReactTable,
   getCoreRowModel,
@@ -61,48 +61,57 @@ export function RequestsTable() {
 
   // Function to update a row in the data array
   const updateRow = (id: string, updates: Partial<PurchaseRequest>) => {
-    setData(prev => 
-      prev.map(row => 
+    setData(prevData => 
+      prevData.map(row => 
         row.id === id ? { ...row, ...updates } : row
       )
     );
   };
 
-  useEffect(() => {
-    fetchRequests()
-  }, [])
-
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
     setIsLoading(true)
-    const supabase = await getAuthenticatedClient();
+    try {
+      const supabase = await getAuthenticatedClient()
+      
+      if (!supabase.isAuthenticated) {
+        throw new Error('Authentication required')
+      }
 
-    const { data, error } = await supabase
-      .from("purchase_requests")
-      .select(`
-        id,
-        description,
-        price,
-        status,
-        response,
-        created_at,
-        updated_at,
-        client:clients(email, phone_number, name),
-        assigned_user:users(id, name)
-      `)
-      .order("created_at", { ascending: false })
-      .returns<PurchaseRequest[]>()
+      const { data, error } = await supabase
+        .from("purchase_requests")
+        .select(`
+          id,
+          description,
+          price,
+          status,
+          response,
+          created_at,
+          updated_at,
+          client:clients(email, phone_number, name),
+          assigned_user:users(id, name),
+          url
+        `)
+        .order("created_at", { ascending: false })
 
-    if (error) {
+      if (error) throw error
+
+      const formattedData = data.map(item => ({
+        ...item,
+        client: Array.isArray(item.client) ? item.client[0] : item.client,
+        assigned_user: Array.isArray(item.assigned_user) ? item.assigned_user[0] : item.assigned_user
+      }))
+
+      setData(formattedData)
+    } catch (error) {
       console.error("Error fetching requests:", error)
-      toast("Error", {
-        description: "Failed to fetch requests.",
-      })
-    } else {
-      console.log("Fetched data:", data)
-      setData(data)
+      toast("Error loading requests")
     }
     setIsLoading(false)
-  }
+  }, [getAuthenticatedClient, toast]);
+
+  useEffect(() => {
+    fetchRequests()
+  }, [fetchRequests])
 
   const columns = useMemo<ColumnDef<PurchaseRequest>[]>(
     () => [
@@ -227,9 +236,7 @@ export function RequestsTable() {
           </DropdownMenu>
         ),
       },
-    ],
-    [],
-  )
+    ],[])
 
   const table = useReactTable({
     data,
