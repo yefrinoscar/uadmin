@@ -35,7 +35,7 @@ const menu = [
     url: '',
     icon: Calculator,
     path: '/dashboard/calculator',
-    disabled: true
+    disabled: false
   }
 ]
 
@@ -62,7 +62,7 @@ export function Sidebar({ user }: {
             {menu.map((item) => (
               <SidebarMenuItem key={item.name} >
                 <SidebarMenuButton asChild isActive={pathname === item.path} aria-disabled={item.disabled}>
-                  <a href={item.url}>
+                  <a href={item.path}>
                     <item.icon />
                     <span>{item.name}</span>
                   </a>
@@ -87,4 +87,3 @@ export function Sidebar({ user }: {
     </ShadcnSidebar>
   )
 }
-
