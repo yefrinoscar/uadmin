@@ -28,7 +28,7 @@ const menu = [
     url: '',
     icon: BadgePercent,
     path: '/dashboard/promotions',
-    disabled: true
+    disabled: false
   },
   {
     name: 'Calculadora',
