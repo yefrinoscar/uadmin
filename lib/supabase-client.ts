@@ -5,7 +5,7 @@ import { useMemo } from 'react'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-interface AuthenticatedSupabaseClient extends SupabaseClient {
+export interface AuthenticatedSupabaseClient extends SupabaseClient {
   isAuthenticated: boolean;
 }
 

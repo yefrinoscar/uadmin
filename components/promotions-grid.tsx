@@ -13,7 +13,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge"
 import { Plus, Edit, Trash2, AlertCircle, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { mockPromotions } from "@/lib/mock-data"
 import { TagInput } from "@/components/tag-input"
 
 type ConditionType = "category" | "specific_products"
@@ -23,7 +22,7 @@ type Promotion = {
   name: string
   title: string
   condition_type: ConditionType
-  condition_content: string
+  condition_value: string
   created_at: string
   updated_at: string
   active: boolean
@@ -44,7 +43,7 @@ export function PromotionsGrid() {
     name: "",
     title: "",
     condition_type: "category" as ConditionType,
-    condition_content: "",
+    condition_value: "",
     active: true
   })
 
@@ -56,7 +55,7 @@ export function PromotionsGrid() {
       name: "",
       title: "",
       condition_type: "category",
-      condition_content: "",
+      condition_value: "",
       active: true
     })
     setProductTags([])
@@ -66,12 +65,7 @@ export function PromotionsGrid() {
   const fetchPromotions = useCallback(async () => {
     setIsLoading(true)
     try {
-      if (useMockData) {
-        // Use mock data for testing
-        setPromotions(mockPromotions as Promotion[]);
-        setIsLoading(false);
-        return;
-      }
+
 
       const supabase = await getAuthenticatedClient()
       
@@ -101,7 +95,7 @@ export function PromotionsGrid() {
     }
     
     // Check if condition content is provided based on the selected type
-    if (formData.condition_type === "category" && !formData.condition_content) {
+    if (formData.condition_type === "category" && !formData.condition_value) {
       toast.error("Por favor ingrese una categoría")
       return
     }
@@ -113,7 +107,7 @@ export function PromotionsGrid() {
 
     // Prepare the condition content based on the type
     const conditionContent = formData.condition_type === "category" 
-      ? formData.condition_content 
+      ? formData.condition_value 
       : productTags.join(', ')
 
     setIsPending(true)
@@ -130,7 +124,7 @@ export function PromotionsGrid() {
                     name: formData.name,
                     title: formData.title,
                     condition_type: formData.condition_type,
-                    condition_content: conditionContent,
+                    condition_value: conditionContent,
                     active: formData.active,
                     updated_at: new Date().toISOString()
                   } 
@@ -145,7 +139,7 @@ export function PromotionsGrid() {
             name: formData.name,
             title: formData.title,
             condition_type: formData.condition_type,
-            condition_content: conditionContent,
+            condition_value: conditionContent,
             active: formData.active,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
@@ -188,7 +182,7 @@ export function PromotionsGrid() {
             name: formData.name,
             title: formData.title,
             condition_type: formData.condition_type,
-            condition_content: conditionContent,
+            condition_value: conditionContent,
             active: formData.active,
             updated_at: new Date().toISOString()
           })
@@ -204,7 +198,7 @@ export function PromotionsGrid() {
             name: formData.name,
             title: formData.title,
             condition_type: formData.condition_type,
-            condition_content: conditionContent,
+            condition_value: conditionContent,
             active: formData.active,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
@@ -315,13 +309,13 @@ export function PromotionsGrid() {
       name: promotion.name,
       title: promotion.title,
       condition_type: promotion.condition_type,
-      condition_content: promotion.condition_type === "category" ? promotion.condition_content : "",
+      condition_value: promotion.condition_type === "category" ? promotion.condition_value : "",
       active: promotion.active
     })
     
-    // If condition_type is specific_products, parse the condition_content into tags
+    // If condition_type is specific_products, parse the condition_value into tags
     if (promotion.condition_type === "specific_products") {
-      setProductTags(promotion.condition_content.split(',').map(item => item.trim()).filter(Boolean))
+      setProductTags(promotion.condition_value.split(',').map(item => item.trim()).filter(Boolean))
     } else {
       setProductTags([])
     }
@@ -335,7 +329,7 @@ export function PromotionsGrid() {
     return (
       promotion.name.toLowerCase().includes(searchLower) ||
       promotion.title.toLowerCase().includes(searchLower) ||
-      promotion.condition_content.toLowerCase().includes(searchLower)
+      promotion.condition_value.toLowerCase().includes(searchLower)
     )
   })
 
@@ -440,14 +434,14 @@ export function PromotionsGrid() {
                 </RadioGroup>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="condition_content" className="text-right">
+                <Label htmlFor="condition_value" className="text-right">
                   Contenido de Condición
                 </Label>
                 {formData.condition_type === "category" ? (
                   <Input
-                    id="condition_content"
-                    value={formData.condition_content}
-                    onChange={(e) => setFormData({ ...formData, condition_content: e.target.value })}
+                    id="condition_value"
+                    value={formData.condition_value}
+                    onChange={(e) => setFormData({ ...formData, condition_value: e.target.value })}
                     className="col-span-3"
                     placeholder="Nombre de la categoría"
                   />
@@ -528,7 +522,7 @@ export function PromotionsGrid() {
                 <div>
                   <span className="text-sm font-medium">Contenido de Condición:</span>
                   <p className="text-sm text-muted-foreground break-words">
-                    {promotion.condition_content}
+                    {promotion.condition_value}
                   </p>
                 </div>
               </CardContent>

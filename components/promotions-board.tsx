@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { AlertCircle, Plus } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogTrigger } from "@/components/ui/dialog"
-import { mockPromotions } from "@/lib/mock-data"
 import { cn } from "@/lib/utils"
 import { PromotionCard } from "@/components/promotion-card"
 import { PromotionFormDialog } from "@/components/promotion-form-dialog"
@@ -29,12 +28,14 @@ import {
   verticalListSortingStrategy,
   useSortable,
 } from "@dnd-kit/sortable"
-import { useSupabaseClient } from "@/lib/supabase-client"
+import { promotionsService } from '@/lib/services/promotions'
+import { useSupabaseClient } from '@/lib/supabase-client'
 
 interface PromotionsBoardProps {
   initialPromotions?: Promotion[]
   useMockData?: boolean
 }
+
 
 interface DroppableContainerProps {
   id: string;
@@ -99,31 +100,69 @@ export function PromotionsBoard({ initialPromotions}: PromotionsBoardProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [isPending, setIsPending] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [editingPromotion, setEditingPromotion] = useState<Promotion | null>(null)
   const [draggedPromotion, setDraggedPromotion] = useState<Promotion | null>(null)
   const [replacingPromotion, setReplacingPromotion] = useState<string | null>(null)
   const [inactiveSearchTerm, setInactiveSearchTerm] = useState("")
   const [hasChanges, setHasChanges] = useState(false)
+  const [originalPromotions, setOriginalPromotions] = useState<Promotion[]>([])
+  const { getAuthenticatedClient } = useSupabaseClient()
 
-  // Function to get authenticated client
-  const { getAuthenticatedClient } = useSupabaseClient();
+  // Track original active promotions
+  const [originalActivePromotions, setOriginalActivePromotions] = useState<Promotion[]>([])
 
   // Split promotions into active and inactive
   useEffect(() => {
     if (promotions.length > 0) {
-      const active = promotions.filter(p => p.active);
-      const inactive = promotions.filter(p => !p.active);
+      const now = new Date()
+      const active = promotions.filter(p => {
+        const startDate = new Date(p.start_date)
+        const endDate = new Date(p.end_date)
+        return p.active && startDate <= now && endDate > now
+      });
+      const inactive = promotions.filter(p => {
+        const startDate = new Date(p.start_date)
+        const endDate = new Date(p.end_date)
+        return !p.active || startDate > now || endDate <= now
+      });
 
       setActivePromotions(active);
       setInactivePromotions(inactive);
-    }
-  }, [promotions])
 
-  // Fetch promotions from API or use mock data
+      // Check if active promotions have changed
+      const activeChanged = active.length !== originalActivePromotions.length ||
+        active.some((p, i) => {
+          const original = originalActivePromotions[i]
+          return !original || 
+            p.id !== original.id || 
+            p.active !== original.active ||
+            p.is_main !== original.is_main
+        })
+
+      setHasChanges(activeChanged)
+    }
+  }, [promotions, originalActivePromotions])
+
+  // Initialize original active promotions
+  useEffect(() => {
+    if (initialPromotions && initialPromotions.length > 0) {
+      const now = new Date()
+      const active = initialPromotions.filter(p => {
+        const startDate = new Date(p.start_date)
+        const endDate = new Date(p.end_date)
+        return p.active && startDate <= now && endDate > now
+      });
+      setOriginalActivePromotions(active)
+    }
+  }, [initialPromotions])
+
+  // Fetch promotions from API
   const fetchPromotions = async () => {
     setIsLoading(true)
     try {
-      setPromotions(mockPromotions)
+      const supabase = await getAuthenticatedClient()
+      const promotionsData = await promotionsService.getAll(supabase)
+      setPromotions(promotionsData)
+      setOriginalPromotions(promotionsData)
     } catch (error) {
       console.error("Error fetching promotions:", error)
       toast.error("Error al cargar promociones")
@@ -134,7 +173,7 @@ export function PromotionsBoard({ initialPromotions}: PromotionsBoardProps) {
 
   useEffect(() => {
     fetchPromotions()
-  }, [getAuthenticatedClient])
+  }, [])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -177,71 +216,102 @@ export function PromotionsBoard({ initialPromotions}: PromotionsBoardProps) {
     }
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    setDraggedPromotion(null);
-    setReplacingPromotion(null);
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setDraggedPromotion(null)
+    setReplacingPromotion(null)
 
-    if (!over) return;
+    if (!event.over) return
 
-    const isFromInactive = inactivePromotions.find((p) => p.id === active.id);
-    const isFromActive = activePromotions.find((p) => p.id === active.id);
-    const isOverActive = activePromotions.find((p) => p.id === over.id);
-    const isOverActiveContainer = over.id === "active";
-    const isOverInactiveContainer = over.id === "inactive";
+    const draggedId = event.active.id as string
+    const overId = event.over.id as string
+    
+    if (draggedId === overId) return
 
-    if (isFromInactive) {
-      if (isOverActive) {
-        // Replace active promotion with inactive promotion
-        const updatedActive = activePromotions.map((p) =>
-          p.id === over.id ? { ...isFromInactive, active: true } : p
-        );
-        const updatedInactive = [
-          ...inactivePromotions.filter((p) => p.id !== active.id),
-          { ...isOverActive, active: false },
-        ];
+    const draggedPromotion = promotions.find(p => p.id === draggedId)
+    if (!draggedPromotion) return
 
-        const newPromotions = [...updatedActive, ...updatedInactive];
-        setPromotions(newPromotions);
-        setHasChanges(true);
-        toast.success("Promoción reemplazada exitosamente");
-      } else if (isOverActiveContainer && activePromotions.length < 2) {
-        // Add inactive promotion to active container
-        const draggedPromotion = inactivePromotions.find((p) => p.id === active.id);
-        if (!draggedPromotion) return;
+    // Check if the promotion can be activated
+    const now = new Date()
+    const startDate = new Date(draggedPromotion.start_date)
+    const endDate = new Date(draggedPromotion.end_date)
+    const canBeActive = startDate <= now && endDate > now
 
-        const updatedActive = [...activePromotions, { ...draggedPromotion, active: true }];
-        const updatedInactive = inactivePromotions.filter((p) => p.id !== active.id);
-
-        const newPromotions = [...updatedActive, ...updatedInactive];
-        setPromotions(newPromotions);
-        setHasChanges(true);
-        toast.success("Promoción activada exitosamente");
+    // Moving to active column
+    if (overId === 'active') {
+      if (!canBeActive) {
+        toast.error("No se puede activar una promoción expirada o pendiente")
+        return
       }
-    } else if (isFromActive) {
-      if (isOverInactiveContainer || isOverActive) {
-        // Move active promotion to inactive
-        const updatedActive = activePromotions.filter((p) => p.id !== active.id);
-        const updatedInactive = [
-          ...inactivePromotions,
-          { ...isFromActive, active: false },
-        ];
 
-        const newPromotions = [...updatedActive, ...updatedInactive];
-        setPromotions(newPromotions);
-        setHasChanges(true);
-        toast.success("Promoción desactivada exitosamente");
+      if (activePromotions.length >= 2) {
+        toast.error("No se pueden tener más de 2 promociones activas")
+        return
       }
+
+      // Update the promotion to be active
+      setPromotions(prevPromotions =>
+        prevPromotions.map(p =>
+          p.id === draggedId
+            ? { ...p, active: true }
+            : p
+        )
+      )
+      setHasChanges(true)
+      toast.success("Promoción activada exitosamente")
+    }
+    
+    // Moving to inactive column
+    else if (overId === 'inactive') {
+      // If it's a main promotion, prevent deactivation
+      if (draggedPromotion.is_main) {
+        toast.error("No se puede desactivar una promoción principal")
+        return
+      }
+
+      // Update the promotion to be inactive
+      setPromotions(prevPromotions =>
+        prevPromotions.map(p =>
+          p.id === draggedId
+            ? { ...p, active: false }
+            : p
+        )
+      )
+      setHasChanges(true)
+      toast.success("Promoción desactivada exitosamente")
+    }
+
+    // Replacing one promotion with another
+    else {
+      const overPromotion = promotions.find(p => p.id === overId)
+      if (!overPromotion) return
+
+      // Update both promotions
+      setPromotions(prevPromotions =>
+        prevPromotions.map(p => {
+          if (p.id === draggedId) {
+            return { ...p, active: overPromotion.active }
+          }
+          if (p.id === overId) {
+            return { ...p, active: draggedPromotion.active }
+          }
+          return p
+        })
+      )
+      setHasChanges(true)
+      toast.success("Promociones intercambiadas exitosamente")
     }
   };
 
-  // Delete promotion
+  // Handle deleting a promotion
   const handleDeletePromotion = async (promotion: Promotion) => {
     if (confirm(`¿Estás seguro que deseas eliminar la promoción "${promotion.name}"?`)) {
       setIsPending(true)
       try {
-        setPromotions(prevPromotions => prevPromotions.filter(p => p.id !== promotion.id))
+        const supabase = await getAuthenticatedClient()
+        await promotionsService.delete(supabase, promotion.id)
+        setPromotions(prev => prev.filter(p => p.id !== promotion.id))
         toast.success("Promoción eliminada correctamente")
+        setHasChanges(true)
       } catch (error) {
         console.error("Error deleting promotion:", error)
         toast.error("Error al eliminar la promoción")
@@ -252,38 +322,36 @@ export function PromotionsBoard({ initialPromotions}: PromotionsBoardProps) {
   }
 
   // Handle editing a promotion
-  const handleEditPromotion = (promotion: Promotion) => {
-    setEditingPromotion(promotion)
-    setIsDialogOpen(true)
+  const handleEditPromotion = async (promotion: Promotion) => {
+    setIsPending(true)
+    try {
+      const supabase = await getAuthenticatedClient()
+      const updatedPromotion = await promotionsService.update(supabase, promotion.id, promotion)
+      setPromotions(prev => prev.map(p => p.id === updatedPromotion.id ? updatedPromotion : p))
+      toast.success("Promoción actualizada correctamente")
+      setIsDialogOpen(false)
+    } catch (error) {
+      console.error("Error updating promotion:", error)
+      toast.error("Error al actualizar la promoción")
+    } finally {
+      setIsPending(false)
+    }
   }
 
   // Handle creating a promotion
   const handleCreatePromotion = async (promotion: Promotion) => {
     setIsPending(true)
     try {
-      const newPromotion: Promotion = {
-        ...promotion,
-        id: `mock-${Date.now()}`,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-
-      if (editingPromotion) {
-        setPromotions(prevPromotions =>
-          prevPromotions.map(p =>
-            p.id === editingPromotion.id
-              ? { ...newPromotion, id: editingPromotion.id }
-              : p
-          )
-        )
-        toast.success("Promoción actualizada correctamente")
-      } else {
-        setPromotions(prevPromotions => [newPromotion, ...prevPromotions])
-        toast.success("Promoción creada correctamente")
-      }
+      const supabase = await getAuthenticatedClient()
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { id, ...promotionWithoutId } = promotion
+      const createdPromotion = await promotionsService.create(supabase, promotionWithoutId)
+      setPromotions(prev => [...prev, createdPromotion])
+      toast.success("Promoción creada correctamente")
+      setIsDialogOpen(false)
     } catch (error) {
-      console.error("Error saving promotion:", error)
-      toast.error("Error al guardar la promoción")
+      console.error("Error creating promotion:", error)
+      toast.error("Error al crear la promoción")
     } finally {
       setIsPending(false)
     }
@@ -329,23 +397,34 @@ export function PromotionsBoard({ initialPromotions}: PromotionsBoardProps) {
             isReplacing={promotion.id === replacingPromotion}
             isActive={promotion.active}
             isOver={promotion.id === replacingPromotion}
+            onDuplicate={handleDuplicate}
+            showDuplicate={!promotion.active}
           />
         </div>
       </SortableItem>
     )
   }
 
-  // Add this function to handle publishing changes
-  const handlePublishChanges = () => {
+  // Handle publishing changes
+  const handlePublishChanges = async () => {
     setIsPending(true)
     try {
-      // Here you would typically make an API call
-      // For now, we'll just show a success message
-      toast.success("Cambios publicados correctamente")
-      setHasChanges(false)
-    } catch (error) {
-      console.log(error);
+      const supabase = await getAuthenticatedClient()
+      await promotionsService.bulkUpdate(supabase, promotions)
       
+      // Update original active promotions
+      const now = new Date()
+      const active = promotions.filter(p => {
+        const startDate = new Date(p.start_date)
+        const endDate = new Date(p.end_date)
+        return p.active && startDate <= now && endDate > now
+      });
+      setOriginalActivePromotions(active)
+      
+      setHasChanges(false)
+      toast.success("Cambios publicados correctamente")
+    } catch (error) {
+      console.error("Error publishing changes:", error)
       toast.error("Error al publicar los cambios")
     } finally {
       setIsPending(false)
@@ -362,11 +441,38 @@ export function PromotionsBoard({ initialPromotions}: PromotionsBoardProps) {
     setPromotions(prevPromotions => 
       prevPromotions.map(p => ({
         ...p,
-        isMain: p.id === promotion.id
+        is_main: p.id === promotion.id
       }))
     )
     setHasChanges(true)
     toast.success("Promoción principal actualizada")
+  }
+
+  // Add this function to handle duplication
+  const handleDuplicate = (promotion: Promotion) => {
+    const now = new Date()
+    const duplicatedPromotion: Promotion = {
+      ...promotion,
+      id: `mock-${Date.now()}`,
+      name: `${promotion.name} (Copia)`,
+      active: false,
+      is_main: false,
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    }
+
+    setPromotions(prev => [duplicatedPromotion, ...prev])
+    setHasChanges(true)
+    toast.success("Promoción duplicada correctamente")
+  }
+
+  // Add the revert changes handler
+  const handleRevertChanges = () => {
+    if (confirm("¿Estás seguro que deseas descartar todos los cambios?")) {
+      setPromotions(originalPromotions)
+      setHasChanges(false)
+      toast.success("Cambios descartados")
+    }
   }
 
   if (isLoading) {
@@ -377,13 +483,22 @@ export function PromotionsBoard({ initialPromotions}: PromotionsBoardProps) {
     <div className="space-y-6">
       <div className="flex justify-end items-center gap-4">
         {hasChanges && (
-          <Button 
-            onClick={handlePublishChanges} 
-            disabled={isPending}
-            className="bg-underla hover:bg-underla-600 text-white border-none"
-          >
-            Publicar Cambios
-          </Button>
+          <>
+            <Button 
+              variant="outline"
+              onClick={handleRevertChanges} 
+              disabled={isPending}
+            >
+              Descartar Cambios
+            </Button>
+            <Button 
+              onClick={handlePublishChanges} 
+              disabled={isPending}
+              className="bg-underla bg-underla-500 hover:bg-underla-700 text-white border-none"
+            >
+              Publicar Cambios
+            </Button>
+          </>
         )}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
@@ -399,8 +514,8 @@ export function PromotionsBoard({ initialPromotions}: PromotionsBoardProps) {
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         onSubmit={handleCreatePromotion}
-        editingPromotion={editingPromotion}
         activePromotionsCount={activePromotions.length}
+        editingPromotion={null}
       />
 
       <div className="flex flex-col md:flex-row gap-6">
@@ -492,6 +607,8 @@ export function PromotionsBoard({ initialPromotions}: PromotionsBoardProps) {
                   isReplacing={false}
                   isActive={draggedPromotion.active}
                   isOver={false}
+                  onDuplicate={handleDuplicate}
+                  showDuplicate={false}
                 />
               </div>
             )}

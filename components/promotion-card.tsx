@@ -1,12 +1,13 @@
 "use client"
 
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Edit, Trash2 } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { format, formatDistanceToNow } from "date-fns"
+import { Edit, Trash2, Copy, Sparkles, Tag } from "lucide-react"
+import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import type { Promotion } from "@/types/promotion"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
 
 interface PromotionCardProps {
   promotion: Promotion
@@ -15,9 +16,12 @@ interface PromotionCardProps {
   onClick?: () => void
   onEdit: (promotion: Promotion) => void
   onDelete: (promotion: Promotion) => Promise<void>
+  onDuplicate: (promotion: Promotion) => void
   isPending: boolean
   isReplacing: boolean
   onSetMain?: (promotion: Promotion) => void
+  showDuplicate?: boolean
+  isPublic?: boolean
 }
 
 export function PromotionCard({ 
@@ -28,7 +32,10 @@ export function PromotionCard({
   onEdit, 
   onDelete, 
   onSetMain,
+  onDuplicate,
   isPending,
+  showDuplicate = false,
+  isPublic = false
 }: PromotionCardProps) {
   const startDate = new Date(promotion.start_date)
   const endDate = new Date(promotion.end_date)
@@ -42,11 +49,8 @@ export function PromotionCard({
         isActive ? "border-primary/50" : "",
         isOver ? "border-primary border-2 bg-primary/5 scale-105" : "",
         isExpired ? "opacity-70" : "",
-        promotion.isMain && "ring-2 ring-underla border-underla"
+        promotion.is_main && "ring-2 ring-underla border-underla"
       )}
-      style={{
-        backgroundColor: promotion.backgroundColor
-      }}
       onClick={onClick}
     >
       {isOver && (
@@ -54,98 +58,139 @@ export function PromotionCard({
           Soltar para reemplazar
         </div>
       )}
-      <CardHeader className="pb-2 space-y-1">
-        <div className="flex justify-between items-start">
-          <div className="flex items-center gap-2">
-            <CardTitle className="text-lg font-bold">{promotion.name}</CardTitle>
-            {promotion.isMain && (
-              <span className="bg-underla-50 text-underla-700 text-xs px-2 py-1 rounded-full font-medium">
-                Principal
-              </span>
+      
+      <div className="p-4">
+        <div className="flex items-start gap-4">
+          {/* Icon */}
+          <div 
+            className="w-12 h-12 rounded-full flex items-center justify-center shrink-0"
+            style={{
+              backgroundColor: `${promotion.text_color}15`,
+              color: promotion.text_color
+            }}
+          >
+            {promotion.is_main ? (
+              <Sparkles className="w-6 h-6" />
+            ) : (
+              <Tag className="w-6 h-6" />
             )}
           </div>
-          <div className="flex flex-col items-end gap-2">
-            {isActive && !promotion.isMain && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs border-underla text-underla hover:bg-underla hover:text-white"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onSetMain?.(promotion)
-                }}
-                disabled={isPending || isExpired}
-              >
-                Hacer Principal
-              </Button>
+
+          {/* Content */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              {/* Status indicator */}
+              <div className="flex items-center gap-2">
+                <div className={cn(
+                  "h-2 w-2 rounded-full",
+                  isExpired ? "bg-red-500" :
+                  !hasStarted ? "bg-zinc-400" :
+                  "bg-emerald-500"
+                )} />
+                <span className="text-xs font-medium text-muted-foreground">
+                  {isExpired ? "Expirada" : !hasStarted ? "Pendiente" : "Activa"}
+                </span>
+              </div>
+              {promotion.is_main && (
+                <span className="bg-underla-50 text-underla-700 text-xs px-2 py-0.5 rounded-full font-medium">
+                  Principal
+                </span>
+              )}
+            </div>
+
+            <h3 className="text-base font-semibold mb-1">{promotion.name}</h3>
+            <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+              {promotion.title}
+            </p>
+
+            {/* Dates */}
+            <div className="grid grid-cols-2 gap-4 text-sm p-3 bg-muted/10 rounded-lg mb-4">
+              <div>
+                <div className="text-xs font-medium text-muted-foreground mb-1">Inicio</div>
+                <div className="font-medium">{format(startDate, "d 'de' MMMM, yyyy", { locale: es })}</div>
+                <div className="text-xs text-muted-foreground">{format(startDate, "HH:mm")}</div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-muted-foreground mb-1">Fin</div>
+                <div className="font-medium">{format(endDate, "d 'de' MMMM, yyyy", { locale: es })}</div>
+                <div className="text-xs text-muted-foreground">{format(endDate, "HH:mm")}</div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            {!isPublic && (
+              <div className="flex items-center justify-end gap-2">
+                {isActive && !isExpired && !promotion.is_main && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs border-underla text-underla hover:bg-underla hover:text-white"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onSetMain?.(promotion)
+                    }}
+                    disabled={isPending || isExpired}
+                  >
+                    Hacer Principal
+                  </Button>
+                )}
+                {showDuplicate && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDuplicate(promotion);
+                          }}
+                          disabled={isPending}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Duplicar promoción</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit(promotion);
+                  }}
+                  disabled={isPending}
+                >
+                  <Edit className="h-4 w-4" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  className="text-destructive hover:text-destructive" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(promotion);
+                  }}
+                  disabled={isPending}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             )}
-            <span className={cn(
-              "text-xs px-3 py-1 rounded-full font-medium",
-              isExpired ? "bg-red-500 text-white" :
-              !hasStarted ? "bg-zinc-200 text-zinc-700" :
-              "bg-emerald-500 text-white"
-            )}>
-              {isExpired ? "Expirada" : !hasStarted ? "Pendiente" : "Activa"}
-            </span>
           </div>
         </div>
-        <CardDescription className="text-sm line-clamp-2">{promotion.title}</CardDescription>
-      </CardHeader>
-      <CardContent className="pb-2">
-        <div className="space-y-3">
-          <div>
-            <div className="text-xs text-muted-foreground">
-              {promotion.condition_type === "category" ? "Categoría" : "Tags"}
-            </div>
-            <div className="text-sm line-clamp-2">
-              {promotion.condition_content}
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4 text-sm border rounded-lg p-3 bg-muted/10">
-            <div>
-              <div className="text-xs font-medium text-muted-foreground mb-1">Inicio</div>
-              <div className="font-medium">{format(startDate, "d 'de' MMMM, yyyy", { locale: es })}</div>
-              <div className="text-xs text-muted-foreground">{format(startDate, "HH:mm")}</div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {formatDistanceToNow(startDate, { locale: es, addSuffix: true })}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs font-medium text-muted-foreground mb-1">Fin</div>
-              <div className="font-medium">{format(endDate, "d 'de' MMMM, yyyy", { locale: es })}</div>
-              <div className="text-xs text-muted-foreground">{format(endDate, "HH:mm")}</div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {formatDistanceToNow(endDate, { locale: es, addSuffix: true })}
-              </div>
-            </div>
-          </div>
+      </div>
+
+      {/* Only show admin actions if not public */}
+      {!isPublic && (
+        <div className="absolute top-2 right-2 flex items-center gap-2">
+          {/* ... existing action buttons ... */}
         </div>
-      </CardContent>
-      <CardFooter className="flex justify-end gap-2 pt-2">
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit(promotion);
-          }}
-          disabled={isPending}
-        >
-          <Edit className="h-4 w-4" />
-        </Button>
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          className="text-destructive hover:text-destructive" 
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(promotion);
-          }}
-          disabled={isPending}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </CardFooter>
+      )}
     </Card>
   )
 }
