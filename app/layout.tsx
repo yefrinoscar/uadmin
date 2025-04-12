@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { Open_Sans } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner"
+import { TRPCProvider } from "./providers";
 
 const open_sans = Open_Sans({
   variable: "--font-open-sans",
@@ -23,6 +24,12 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en" suppressHydrationWarning>
+        <head>
+          {/* <script
+            crossOrigin="anonymous"
+            src="//unpkg.com/react-scan/dist/auto.global.js"
+          /> */}
+        </head>
         <body className={`${open_sans.variable} font-sans`}>
           <ThemeProvider
             attribute="class"
@@ -30,8 +37,10 @@ export default function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            {children}
-            <Toaster position="top-right" />
+            <TRPCProvider>
+              {children}
+              <Toaster position="top-right" />
+            </TRPCProvider>
           </ThemeProvider>
         </body>
       </html>

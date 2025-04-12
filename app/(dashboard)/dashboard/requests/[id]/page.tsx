@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardDescription, CardFooter } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardDescription, CardFooter, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -14,10 +14,16 @@ import { toast } from "sonner"
 import { useSupabaseClient } from "@/lib/supabase-client"
 import { formatDistance } from "date-fns"
 import { es } from "date-fns/locale"
-import { ArrowLeft, Search, Save, BrainCircuit, Package, Star } from "lucide-react"
+import { ArrowLeft, Search, Save, BrainCircuit, Package, Star, Mail, MessageCircle, Send } from "lucide-react"
 import { PricingCalculator } from "@/components/pricing-calculator"
-import { use } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Badge } from "@/components/ui/badge"
 
 type PurchaseRequest = {
   id: string
@@ -37,6 +43,8 @@ type PurchaseRequest = {
   price?: number
   response?: string
   url?: string
+  email_sent?: boolean
+  whatsapp_sent?: boolean
 }
 
 type Product = {
@@ -81,16 +89,19 @@ export default function RequestDetailPage({ params: paramsPromise }: { params: P
     totalPEN: 0,
     exchangeRate: 3.7
   })
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [emailSent, setEmailSent] = useState(false);
   const { getAuthenticatedClient } = useSupabaseClient();
 
   useEffect(() => {
     fetchRequestDetails()
-  }, [params.id])
+  })
 
   const fetchRequestDetails = async () => {
     try {
       const supabase = await getAuthenticatedClient();
-      
+
       if (!supabase.isAuthenticated) {
         throw new Error('Authentication required');
       }
@@ -107,13 +118,15 @@ export default function RequestDetailPage({ params: paramsPromise }: { params: P
           updated_at,
           client:clients(email, phone_number, name),
           assigned_user:users(id, name),
-          url
+          url,
+          email_sent,
+          whatsapp_sent
         `)
         .eq("id", params.id)
         .single()
 
       if (error) throw error;
-      
+
       console.log("Fetched request:", data)
       const formattedData = {
         ...data,
@@ -123,6 +136,9 @@ export default function RequestDetailPage({ params: paramsPromise }: { params: P
       setRequest(formattedData)
       setBasePrice(data.price || 0)
       setResponse(data.response || "")
+      
+      // Initialize email and WhatsApp sent flags
+      setEmailSent(data.email_sent || false);
     } catch (error) {
       console.error("Error fetching request details:", error)
       toast("Error loading request details")
@@ -143,8 +159,9 @@ export default function RequestDetailPage({ params: paramsPromise }: { params: P
     }
 
     setIsSearching(true);
+    setResponse(""); // Clear response when searching
     try {
-      const params = new URLSearchParams({ 
+      const params = new URLSearchParams({
         query: searchQuery,
         stores: Array.from(selectedStores).join(',')
       });
@@ -152,11 +169,11 @@ export default function RequestDetailPage({ params: paramsPromise }: { params: P
 
       if (!response.ok) throw new Error("Failed to search products");
       const data = await response.json();
-      
+
       if (data.results.length === 0) {
         toast("No se encontraron productos");
       }
-      
+
       setProducts(data.results);
     } catch (error) {
       console.error("Error searching products:", error);
@@ -183,18 +200,24 @@ export default function RequestDetailPage({ params: paramsPromise }: { params: P
 
   const handleSelectProduct = (product: Product) => {
     setBasePrice(product.price);
-    toast(`${product.source.toUpperCase()}: $${product.price.toFixed(2)}`);
+    setResponse(""); // Clear response when selecting product
+    setSelectedProduct(product);
   };
 
   const handleSaveResponse = async () => {
+    if (!response.trim()) {
+      toast.warning("No hay respuesta para guardar");
+      return;
+    }
+
     const supabase = await getAuthenticatedClient();
 
     const { error } = await supabase
       .from("purchase_requests")
-      .update({ 
-        response, 
+      .update({
+        response,
         price: basePrice,
-        updated_at: new Date().toISOString() 
+        updated_at: new Date().toISOString()
       })
       .eq("id", params.id)
 
@@ -255,6 +278,53 @@ export default function RequestDetailPage({ params: paramsPromise }: { params: P
   };
 
   const filteredProducts = products.filter(product => selectedStores.has(product.source));
+
+  const handleSendEmail = async () => {
+    if (!request?.client.email || !response.trim()) {
+      toast.warning("No hay respuesta para enviar");
+      return;
+    }
+
+    setIsSendingEmail(true);
+    try {
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: request.client.email,
+          subject: 'Respuesta a tu solicitud de cotización',
+          content: response
+        }),
+      });
+
+      if (!res.ok) throw new Error('Failed to send email');
+      
+      // Update the database to mark email as sent
+      const supabase = await getAuthenticatedClient();
+      await supabase
+        .from("purchase_requests")
+        .update({
+          email_sent: true,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", params.id);
+      
+      toast.success('Email enviado correctamente');
+      
+      // Mark email as sent
+      setEmailSent(true);
+      
+      // Save response after sending
+      await handleSaveResponse();
+    } catch (error) {
+      console.error('Error sending email:', error);
+      toast.error('Error al enviar el email');
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -414,17 +484,213 @@ export default function RequestDetailPage({ params: paramsPromise }: { params: P
           </Button>
           <h2 className="text-2xl font-bold tracking-tight">Pedido #{params.id}</h2>
         </div>
-        <Button 
-          onClick={handleSaveResponse}
-          className="gap-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-medium border-0"
-        >
-          <Save className="h-4 w-4" />
-          Guardar
-        </Button>
+        <div className="flex gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                disabled={!response.trim() || isSendingEmail}
+                className={`transition-all ${!response.trim() ? "opacity-50 cursor-not-allowed" : "hover:bg-primary hover:text-primary-foreground"}`}
+              >
+                <Send className="h-4 w-4 mr-2" />
+                Enviar
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 p-1">
+              {request?.client.email && (
+                <DropdownMenuItem 
+                  onClick={handleSendEmail}
+                  disabled={isSendingEmail}
+                  className="flex items-center cursor-pointer py-2 px-3 rounded-md hover:bg-secondary transition-colors"
+                >
+                  {isSendingEmail ? (
+                    <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
+                  ) : (
+                    <Mail className={`w-4 h-4 mr-2 ${emailSent ? "text-green-500" : ""}`} />
+                  )}
+                  {emailSent ? "Email enviado anteriormente" : "Enviar por Email"}
+                </DropdownMenuItem>
+              )}
+              {request?.client.phone_number && (
+                <DropdownMenuItem 
+                  disabled={true}
+                  className="flex items-center cursor-not-allowed py-2 px-3 rounded-md opacity-50"
+                >
+                  <MessageCircle className="w-4 h-4 mr-2" />
+                  WhatsApp deshabilitado
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            onClick={handleSaveResponse}
+            className="gap-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-medium border-0"
+          >
+            <Save className="h-4 w-4" />
+            Guardar
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* First Column - Details and Calculator */}
+        {/* First Column - Product Search */}
+        <div className="lg:col-span-1">
+          <Card className="overflow-hidden border-none shadow-md">
+            <CardHeader className="">
+              <div className="flex items-center gap-2">
+                <Search className="h-5 w-5" />
+                <CardTitle className="text-lg font-semibold">Buscar productos</CardTitle>
+              </div>
+              <CardDescription className="">
+                Encuentra alternativas en Amazon, eBay y Jomashop para comparar precios y obtener la mejor oferta
+              </CardDescription>
+            </CardHeader>
+            
+            <CardContent className="p-6 space-y-6">
+              {/* Search input and store selection */}
+              <div className="flex items-center space-x-3">
+                <div className="flex-1">
+                  <Input
+                    placeholder="Buscar productos..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  />
+                </div>
+                <Button 
+                  onClick={handleSearch} 
+                  disabled={isSearching}
+                >
+                  {isSearching ? (
+                    <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
+                  ) : (
+                    <Search className="mr-2 h-4 w-4" />
+                  )}
+                  Buscar
+                </Button>
+              </div>
+
+              <Card className="border">
+                <CardContent className="p-4 space-y-3">
+                  <div className="w-full">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Seleccionar tiendas (máx. 3)</p>
+                  </div>
+                  <div className="flex flex-wrap gap-4">
+                    {STORES.map(store => (
+                      <div key={store.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={store.id}
+                          checked={selectedStores.has(store.id as StoreType)}
+                          onCheckedChange={() => handleStoreToggle(store.id as StoreType)}
+                          disabled={!store.enabled || (!selectedStores.has(store.id as StoreType) && selectedStores.size >= 3)}
+                        />
+                        <Label
+                          htmlFor={store.id}
+                          className={store.enabled ? "" : "text-muted-foreground"}
+                        >
+                          {store.name}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Products list */}
+              {filteredProducts.length > 0 ? (
+                <div className="relative h-[600px] pr-2 group">
+                  <div className="absolute inset-0 overflow-y-auto space-y-3 custom-scrollbar">
+                    {filteredProducts.map((product) => {
+                      // Create a unique identifier for each product
+                      const productUniqueId = `${product.source}-${product.id}`;
+                      const isSelected = selectedProduct && 
+                        selectedProduct.title === product.title && 
+                        selectedProduct.source === product.source;
+                      
+                      return (
+                        <Card
+                          key={productUniqueId}
+                          className={`flex gap-4 p-4 ${
+                            isSelected 
+                              ? "bg-primary/5 border-primary" 
+                              : "hover:bg-accent/50"
+                          } transition-all duration-200`}
+                        >
+                          <div className="flex-shrink-0 w-20 h-20 rounded-md overflow-hidden bg-muted">
+                            {product.image ? (
+                              <div 
+                                className="w-full h-full bg-center bg-cover cursor-pointer"
+                                style={{ backgroundImage: `url(${product.image})` }}
+                                onClick={() => {
+                                  const url = getStoreProductUrl(product);
+                                  if (url !== '#') {
+                                    window.open(url, '_blank', 'noopener,noreferrer');
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Package className="h-8 w-8 text-muted-foreground/50" />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex-grow min-w-0 flex flex-col justify-between">
+                            <div>
+                              <h3 className="font-medium text-sm line-clamp-2">{product.title}</h3>
+                              <div className="flex items-center gap-2 mt-2">
+                                <Badge variant="secondary">
+                                  {product.source === 'amazon' ? 'Amazon' : product.source === 'ebay' ? 'eBay' : 'Jomashop'}
+                                </Badge>
+                                {product.rating > 0 && (
+                                  <span className="text-xs text-muted-foreground flex items-center gap-0.5">
+                                    <Star className="w-3 h-3 fill-current" /> {product.rating}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex justify-between items-center mt-2">
+                              <span className="text-sm font-semibold">${product.price.toFixed(2)}</span>
+                              <Button
+                                size="sm"
+                                variant={isSelected ? "default" : "secondary"}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectProduct(product);
+                                }}
+                              >
+                                {isSelected ? "Seleccionado" : "Cotizar"}
+                              </Button>
+                            </div>
+                          </div>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3 py-2">
+                  {[...Array(3)].map((_, i) => (
+                    <Card key={i} className="flex items-start gap-4 p-4">
+                      <Skeleton className="w-20 h-20 rounded-md" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-4 w-1/2" />
+                        <div className="flex justify-between items-center">
+                          <Skeleton className="h-4 w-20" />
+                          <Skeleton className="h-8 w-24" />
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Second Column - Details and Calculator */}
         <div className="space-y-6">
           <Card>
             <CardHeader>
@@ -447,12 +713,12 @@ export default function RequestDetailPage({ params: paramsPromise }: { params: P
                 <Label className="text-base font-medium">Descripción</Label>
                 <p className="text-sm text-muted-foreground">{request.description || "-"}</p>
               </div>
-              
+
               <div className="space-y-2">
                 <Label className="text-base font-medium">URL</Label>
                 <p className="text-sm text-muted-foreground">{request.url || "-"}</p>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium">Cliente</Label>
@@ -463,9 +729,9 @@ export default function RequestDetailPage({ params: paramsPromise }: { params: P
                 <div>
                   <Label className="text-sm font-medium">Estado</Label>
                   <p className="text-sm mt-1 text-muted-foreground">
-                    {request.status === "pending" ? "Pendiente" : 
-                     request.status === "approved" ? "Aprobado" : 
-                     request.status === "rejected" ? "Rechazado" : "-"}
+                    {request.status === "pending" ? "Pendiente" :
+                      request.status === "approved" ? "Aprobado" :
+                        request.status === "rejected" ? "Rechazado" : "-"}
                   </p>
                 </div>
                 <div>
@@ -485,182 +751,40 @@ export default function RequestDetailPage({ params: paramsPromise }: { params: P
           </Card>
 
           {/* Pricing Calculator */}
-          <PricingCalculator 
+          <PricingCalculator
             basePrice={basePrice}
             onBasePriceChange={setBasePrice}
             onCalculationsChange={setCalculations}
           />
         </div>
 
-        {/* Second Column - Product Search */}
-        <div className="lg:col-span-1">
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Buscar productos</h3>
-            <p className="text-sm text-muted-foreground">
-              Encuentra alternativas en Amazon, eBay y Jomashop para comparar precios y obtener la mejor oferta
-            </p>
-            
-            <div className="space-y-4">
-              {/* Search input and store selection */}
-              <div className="flex items-center space-x-4">
-                <div className="flex-1">
-                  <Input
-                    placeholder="Buscar productos..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  />
-                </div>
-                <Button onClick={handleSearch} disabled={isSearching}>
-                  {isSearching ? (
-                    <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-                  ) : (
-                    <Search className="mr-2 h-4 w-4" />
-                  )}
-                  Buscar
-                </Button>
-              </div>
 
-              <div className="flex flex-wrap gap-2">
-                {STORES.map(store => (
-                  <div key={store.id} className="flex items-center space-x-2">
-                    <Checkbox 
-                      id={store.id}
-                      checked={selectedStores.has(store.id as StoreType)}
-                      onCheckedChange={() => handleStoreToggle(store.id as StoreType)}
-                      disabled={!store.enabled || (!selectedStores.has(store.id as StoreType) && selectedStores.size >= 3)}
-                    />
-                    <Label 
-                      htmlFor={store.id}
-                      className={store.enabled ? "" : "text-muted-foreground"}
-                    >
-                      {store.name}
-                    </Label>
-                  </div>
-                ))}
-              </div>
-
-              {/* Products list */}
-              {filteredProducts.length > 0 ? (
-                <div className="relative h-[700px] pr-2 group">
-                  <div className="absolute inset-0 overflow-y-auto space-y-2 custom-scrollbar">
-                    {filteredProducts.map((product) => (
-                      <div
-                        key={`${product.source}-${product.title}`}
-                        onClick={() => {
-                          const url = getStoreProductUrl(product);
-                          if (url !== '#') {
-                            window.open(url, '_blank', 'noopener,noreferrer');
-                          }
-                        }}
-                        className={`
-                          flex items-start gap-4 p-3 cursor-pointer rounded-lg border bg-card
-                          hover:border-primary hover:shadow-md transition-all
-                          ${!product.link ? 'opacity-70' : ''}
-                        `}
-                      >
-                        <div className="flex-shrink-0 w-20 h-20 rounded-md overflow-hidden bg-muted">
-                          {product.image ? (
-                            <img
-                              src={product.image}
-                              alt={product.title}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                target.src = '/placeholder-product.png'; // Add this image to your public folder
-                              }}
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-muted">
-                              <Package className="w-8 h-8 text-muted-foreground" />
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex-grow min-w-0 flex flex-col justify-between">
-                          <div>
-                            <h3 className="font-medium text-sm line-clamp-2">{product.title}</h3>
-                            <div className="flex items-center gap-2 mt-2">
-                              <span className="px-1.5 py-0.5 rounded-md text-xs font-medium bg-secondary text-secondary-foreground">
-                                {product.source === 'amazon' ? 'Amazon' : product.source === 'ebay' ? 'eBay' : 'Jomashop'}
-                              </span>
-                              {product.rating > 0 && (
-                                <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-                                  <Star className="w-3 h-3 fill-current" /> {product.rating}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div className="flex justify-between items-center mt-2">
-                            <span className="text-sm font-semibold">${product.price.toFixed(2)}</span>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleSelectProduct(product);
-                              }}
-                              className="cursor-pointer"
-                            >
-                              Cotizar
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {[...Array(3)].map((_, i) => (
-                    <div key={i} className="flex items-start gap-4 p-3 rounded-lg border bg-card/50">
-                      <Skeleton className="w-20 h-20 rounded-md" />
-                      <div className="flex-1 space-y-2">
-                        <Skeleton className="h-4 w-3/4" />
-                        <Skeleton className="h-4 w-1/2" />
-                        <div className="flex justify-between items-center">
-                          <Skeleton className="h-4 w-20" />
-                          <Skeleton className="h-8 w-24" />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
 
         {/* Third Column - Response */}
         <div className="lg:col-span-1 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-medium">Respuesta</h3>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={generateEmailText}
-              disabled={isGenerating}
-              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0"
-            >
-              {isGenerating ? (
-                <span className="flex items-center gap-1">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Generando...
-                </span>
-              ) : (
-                <span className="flex items-center gap-1">
-                  <BrainCircuit className="h-4 w-4" />
-                  Generado con IA
-                </span>
-              )}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="default"
+                onClick={generateEmailText}
+                disabled={isGenerating || !selectedProduct}
+                className={!selectedProduct ? "opacity-50 cursor-not-allowed" : ""}
+              >
+                {isGenerating ? (
+                  <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
+                ) : (
+                  <BrainCircuit className="mr-2 h-4 w-4" />
+                )}
+                Generar respuesta
+              </Button>
+            </div>
           </div>
-          <Textarea 
-            value={response} 
+          <Textarea
+            value={response}
             onChange={(e) => setResponse(e.target.value)}
             placeholder="Escribe tu respuesta aquí..."
-            className="min-h-[600px] resize-none"
+            className={`min-h-[600px] resize-none ${!response.trim() ? 'border-dashed border-muted-foreground/30' : ''}`}
           />
         </div>
       </div>
