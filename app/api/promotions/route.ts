@@ -19,10 +19,6 @@ export async function GET() {
       )
     }
 
-    console.log(error);
-    console.log(promotions);
-    
-
     return NextResponse.json(promotions)
 
   } catch (error) {

@@ -1,5 +1,5 @@
 "use client"
-import { MessageSquareDot, BadgePercent, Calculator, Files, FileSearch, FileSignature, ChevronRight } from "lucide-react"
+import { ChevronRight } from "lucide-react"
 import {
   Sidebar as ShadcnSidebar,
   SidebarContent,
@@ -17,53 +17,7 @@ import Image from "next/image"
 import { NavUser } from "./nav-user"
 import { usePathname } from "next/navigation"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@radix-ui/react-collapsible"
-
-const menu = [
-  {
-    name: 'Pedidos',
-    url: '',
-    icon: MessageSquareDot,
-    path: '/dashboard/requests',
-    disabled: false
-  },
-  {
-    name: 'Promociones',
-    url: '',
-    icon: BadgePercent,
-    path: '/dashboard/promotions',
-    disabled: false
-  },
-  {
-    name: 'Calculadora',
-    url: '',
-    icon: Calculator,
-    path: '/dashboard/calculator',
-    disabled: false
-  },
-  {
-    name: 'Facturación',
-    url: '',
-    icon: Files,
-    path: '/dashboard/invoices',
-    disabled: true,
-    childs: [
-      {
-        name: 'Eletronica',
-        url: '',
-        icon: FileSignature,
-        path: '/dashboard/invoices/electronic',
-        disabled: false
-      },
-      {
-        name: 'Proformas',
-        url: '',
-        icon: FileSearch,
-        path: '/dashboard/invoices/proforma',
-        disabled: false
-      },
-    ]
-  }
-]
+import { menu } from '@/config/menu'
 
 export function Sidebar({ user }: {
   user: {
@@ -73,8 +27,6 @@ export function Sidebar({ user }: {
   }
 }) {
   const pathname = usePathname();
-  console.log(pathname);
-
 
   return (
     <ShadcnSidebar className="border-r border-primary/10 disabled:pointer-events-none">

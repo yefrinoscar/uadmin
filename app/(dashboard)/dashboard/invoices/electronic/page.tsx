@@ -1,7 +1,8 @@
 import { Suspense } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import { PromotionsBoard } from "@/components/promotions-board";
+import { PromotionsBoard } from "@/app/(dashboard)/dashboard/promotions/_components/promotions-board";
+import { PromotionsBoardSkeleton } from "@/components/skeletons/promotions-board-skeleton";
 
 export default function PromotionsPage() {
   return (
@@ -14,7 +15,7 @@ export default function PromotionsPage() {
 
       <div className="flex flex-col gap-5">
         <h2 className="text-2xl font-bold tracking-tight">Gestión de Promociones</h2>
-        <Suspense fallback={<div className="text-center py-8">Cargando...</div>}>
+        <Suspense fallback={<PromotionsBoardSkeleton />}>
           <PromotionsBoard />
         </Suspense>
       </div>
