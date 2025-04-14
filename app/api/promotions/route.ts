@@ -1,5 +1,6 @@
 import { createAuthenticatedClient } from '@/lib/supabase-client'
 import { NextResponse } from 'next/server'
+import { corsHeaders } from '@/lib/cors'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,21 +16,21 @@ export async function GET() {
       console.error('Error fetching promotions:', error)
       return NextResponse.json(
         { error: 'Error fetching promotions' },
-        { status: 500 }
+        { status: 500, headers: corsHeaders }
       )
     }
 
-    console.log(error);
-    console.log(promotions);
-    
-
-    return NextResponse.json(promotions)
+    return NextResponse.json(promotions, { headers: corsHeaders })
 
   } catch (error) {
     console.error('Error in promotions route:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     )
   }
+}
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders })
 } 
