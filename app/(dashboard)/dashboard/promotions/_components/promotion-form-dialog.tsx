@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import {
@@ -58,9 +58,12 @@ export function PromotionFormDialog({
   activePromotionsCount,
 }: PromotionFormDialogProps) {
   const [productTags, setProductTags] = useState<string[]>([])
-  const [previewColors, setPreviewColors] = useState({
-    text_color: "#000000",
-    background_color: "#F3F4F6"
+  const [previewColors, setPreviewColors] = useState<{
+    text_color: string;
+    background_color: string;
+  }>({
+    text_color: "#ffffff",
+    background_color: "#3498db",
   })
 
   const form = useForm<FormValues>({
@@ -68,7 +71,7 @@ export function PromotionFormDialog({
     defaultValues: {
       name: "",
       title: "",
-      condition_type: "category",
+      condition_type: "tags",
       condition_value: "",
       active: false,
       is_main: false,
@@ -79,56 +82,108 @@ export function PromotionFormDialog({
     }
   })
 
-  // Reset form when dialog opens for new promotion
-  useEffect(() => {
-    if (open && !editingPromotion) {
-      form.reset()
-      setProductTags([])
-      setPreviewColors({
-        text_color: "#000000",
-        background_color: "#F3F4F6"
-      })
+  // Add a ref to track typing state
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Replace the existing formValues state and debounce with this simpler approach
+  const [formValues, setFormValues] = useState({
+    title: form.getValues().title || '',
+    text_color: form.getValues().text_color || '',
+    background_color: form.getValues().background_color || ''
+  });
+
+  // This function handles all form input changes with debouncing
+  const handleInputChange = useCallback((field: keyof typeof formValues, value: string) => {
+    // Clear any existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
     }
-  }, [open, editingPromotion, form])
+    
+    // Set a new timeout - only update preview state after user stops typing
+    typingTimeoutRef.current = setTimeout(() => {
+      setFormValues(prev => ({
+        ...prev,
+        [field]: value
+      }));
+    }, 750); // 750ms delay
+  }, []);
 
-  // Reset form when dialog closes
+  // Update preview directly from formValues without extra debounce
   useEffect(() => {
-    if (!open) {
-      form.reset()
-      setProductTags([])
-      setPreviewColors({
-        text_color: "#000000",
-        background_color: "#F3F4F6"
-      })
-    }
-  }, [open, form])
+    setPreviewColors({
+      text_color: formValues.text_color,
+      background_color: formValues.background_color
+    });
+  }, [formValues]);
 
-  // Set form values when editing
+  // Clean up timeout on unmount
   useEffect(() => {
-    if (editingPromotion) {
-      form.reset({
-        ...editingPromotion,
-        text_color: editingPromotion.text_color || "#000000",
-        background_color: editingPromotion.background_color || "#F3F4F6",
-      })
-      setPreviewColors({
-        text_color: editingPromotion.text_color || "#000000",
-        background_color: editingPromotion.background_color || "#F3F4F6"
-      })
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
 
-      if (editingPromotion.condition_type === "tags") {
-        setProductTags(editingPromotion.condition_value.split(',').map(tag => tag.trim()))
+  // Consolidated form reset and initialization logic
+  useEffect(() => {
+    if (open) {
+      if (editingPromotion) {
+        // When editing an existing promotion
+        const newTextColor = editingPromotion.text_color || "#000000";
+        const newBgColor = editingPromotion.background_color || "#F3F4F6";
+        
+        form.reset({
+          ...editingPromotion,
+          text_color: newTextColor,
+          background_color: newBgColor,
+        });
+        
+        setPreviewColors({
+          text_color: newTextColor,
+          background_color: newBgColor
+        });
+        
+        setFormValues({
+          title: editingPromotion.title || '',
+          text_color: newTextColor,
+          background_color: newBgColor
+        });
+
+        if (editingPromotion.condition_type === "tags") {
+          setProductTags(editingPromotion.condition_value.split(',').map(tag => tag.trim()));
+        } else {
+          setProductTags([editingPromotion.condition_value]);
+        }
+      } else {
+        // When creating a new promotion
+        const defaultValues = {
+          name: "",
+          title: "",
+          condition_type: "tags",
+          condition_value: "",
+          active: false,
+          is_main: false,
+          background_color: "#3498db",
+          text_color: "#ffffff",
+          start_date: new Date().toISOString(),
+          end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        } as const;
+
+        form.reset(defaultValues);
+        setProductTags([]);
+        setPreviewColors({
+          text_color: defaultValues.text_color,
+          background_color: defaultValues.background_color
+        });
+        setFormValues({
+          title: '',
+          text_color: defaultValues.text_color,
+          background_color: defaultValues.background_color
+        });
       }
     }
-  }, [editingPromotion, form])
-
-  // Update preview colors when color inputs are dropped/changed
-  const handleColorChange = (field: "text_color" | "background_color", value: string) => {
-    setPreviewColors(prev => ({
-      ...prev,
-      [field]: value
-    }))
-  }
+  }, [open, editingPromotion, form]);
 
   const handleSubmit = async (values: FormValues) => {
     const startDate = new Date(values.start_date)
@@ -209,7 +264,16 @@ export function PromotionFormDialog({
                     <FormItem>
                       <FormLabel>Título</FormLabel>
                       <FormControl>
-                        <Input {...field} />
+                        <Input 
+                          {...field}
+                          onChange={(e) => {
+                            // Update the form value immediately for validation
+                            field.onChange(e.target.value);
+                            
+                            // Debounce the preview update
+                            handleInputChange('title', e.target.value);
+                          }}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -295,10 +359,11 @@ export function PromotionFormDialog({
                             {...field}
                             className="h-10 px-2 py-1"
                             onChange={(e) => {
-                              field.onChange(e.target.value)
-                            }}
-                            onBlur={(e) => {
-                              handleColorChange("text_color", e.target.value)
+                              // Update form value immediately for validation
+                              field.onChange(e.target.value);
+                              
+                              // Debounce the preview update
+                              handleInputChange('text_color', e.target.value);
                             }}
                           />
                         </FormControl>
@@ -318,10 +383,11 @@ export function PromotionFormDialog({
                             {...field}
                             className="h-10 px-2 py-1"
                             onChange={(e) => {
-                              field.onChange(e.target.value)
-                            }}
-                            onBlur={(e) => {
-                              handleColorChange("background_color", e.target.value)
+                              // Update form value immediately for validation
+                              field.onChange(e.target.value);
+                              
+                              // Debounce the preview update
+                              handleInputChange('background_color', e.target.value);
                             }}
                           />
                         </FormControl>
@@ -419,8 +485,7 @@ export function PromotionFormDialog({
                   <div 
                     className="w-full h-48 relative flex items-center overflow-hidden"
                     style={{ 
-                      backgroundColor: previewColors.background_color,
-                      transition: 'all 0.2s ease-in-out'
+                      backgroundColor: previewColors.background_color
                     }}
                   >
                     {/* Decorative elements */}
@@ -455,11 +520,10 @@ export function PromotionFormDialog({
                         <h3 
                           className="text-3xl font-bold leading-tight tracking-tight"
                           style={{ 
-                            color: previewColors.text_color,
-                            transition: 'all 0.2s ease-in-out'
+                            color: previewColors.text_color
                           }}
                         >
-                          {form.watch('title') || 'Título de la promoción'}
+                          {formValues.title || 'Título de la promoción'}
                         </h3>
                         <div className="flex items-center gap-2">
                           <Button
@@ -485,8 +549,7 @@ export function PromotionFormDialog({
                   <div 
                     className="w-full py-3 px-4 relative"
                     style={{ 
-                      backgroundColor: previewColors.background_color,
-                      transition: 'all 0.2s ease-in-out'
+                      backgroundColor: previewColors.background_color
                     }}
                   >
                     <div className="flex items-center gap-3">
@@ -500,12 +563,14 @@ export function PromotionFormDialog({
                         <Tag className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 
-                          className="text-sm font-semibold truncate"
-                          style={{ color: previewColors.text_color }}
-                        >
-                          {form.watch('title') || 'Título de la promoción'}
-                        </h3>
+                        <div className="ml-1">
+                          <h3 
+                            className="text-sm font-medium"
+                            style={{ color: previewColors.text_color }}
+                          >
+                            {formValues.title || 'Título de la promoción'}
+                          </h3>
+                        </div>
                       </div>
                       <Button 
                         variant="ghost" 
@@ -547,7 +612,7 @@ export function PromotionFormDialog({
                           className="text-sm font-semibold mb-1"
                           style={{ color: previewColors.text_color }}
                         >
-                          {form.watch('title') || 'Título de la promoción'}
+                          {formValues.title || 'Título de la promoción'}
                         </h3>
                         <Button 
                           variant="secondary"
@@ -566,13 +631,9 @@ export function PromotionFormDialog({
                 </div>
               </TabsContent>
             </Tabs>
-
-            <div className="text-sm text-muted-foreground">
-              <p>Los colores se actualizarán al soltar el selector de color.</p>
-            </div>
           </div>
         </div>
       </DialogContent>
     </Dialog>
   )
-} 
+}

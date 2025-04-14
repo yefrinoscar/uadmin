@@ -2,7 +2,7 @@
 
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Edit, Trash2, Copy, Sparkles, Tag } from "lucide-react"
+import { Edit, Trash2, Copy, CircleDashed, Zap } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import type { Promotion } from "@/types/promotion"
@@ -46,10 +46,10 @@ export function PromotionCard({
     <Card 
       className={cn(
         "transition-all duration-200 overflow-hidden cursor-pointer",
-        isActive ? "border-primary/50" : "",
+        isActive ? "" : "",
         isOver ? "border-primary border-2 bg-primary/5 scale-105" : "",
         isExpired ? "opacity-70" : "",
-        promotion.is_main && "ring-2 ring-underla border-underla"
+        promotion.is_main && ""
       )}
       onClick={onClick}
     >
@@ -64,15 +64,11 @@ export function PromotionCard({
           {/* Icon */}
           <div 
             className="w-12 h-12 rounded-full flex items-center justify-center shrink-0"
-            style={{
-              backgroundColor: `${promotion.text_color}15`,
-              color: promotion.text_color
-            }}
           >
-            {promotion.is_main ? (
-              <Sparkles className="w-6 h-6" />
+            {promotion.active ? (
+              <Zap className="w-6 h-6" />
             ) : (
-              <Tag className="w-6 h-6" />
+              <CircleDashed className="w-6 h-6" />
             )}
           </div>
 
