@@ -4,6 +4,7 @@ export interface Promotion {
   id: string
   name: string
   title: string
+  description: string
   condition_type: ConditionType
   condition_value: string
   background_color: string

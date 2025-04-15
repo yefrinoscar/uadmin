@@ -8,6 +8,7 @@ const promotionSchema = z.object({
   id: z.string().optional(),
   name: z.string(),
   title: z.string(),
+  description: z.string(),
   condition_type: z.string(),
   condition_value: z.string(),
   background_color: z.string(),

@@ -36,8 +36,9 @@ const CONDITION_TYPES = [
 ] as const
 
 const formSchema = z.object({
-  name: z.string().min(1, "El nombre es requerido"),
+  name: z.string(),
   title: z.string().min(1, "El título es requerido"),
+  description: z.string().min(1, "La descripción es requerida"),
   condition_type: z.enum(["category", "tags"]),
   condition_value: z.string(),
   active: z.boolean().default(false),
@@ -71,6 +72,7 @@ export function PromotionFormDialog({
     defaultValues: {
       name: "",
       title: "",
+      description: "",
       condition_type: "tags",
       condition_value: "",
       active: false,
@@ -217,12 +219,13 @@ export function PromotionFormDialog({
     try {
       await onSubmit({
         ...values,
+        name: values.title,
         condition_value: values.condition_type === "category"
           ? values.condition_value
           : productTags.join(', '),
         id: editingPromotion?.id || '',
         created_at: editingPromotion?.created_at || new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
       onOpenChange(false)
     } catch (error) {
@@ -245,10 +248,10 @@ export function PromotionFormDialog({
               <div className="grid gap-4 py-4">
                 <FormField
                   control={form.control}
-                  name="name"
+                  name="title"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Nombre</FormLabel>
+                      <FormLabel>Título</FormLabel>
                       <FormControl>
                         <Input {...field} />
                       </FormControl>
@@ -259,10 +262,10 @@ export function PromotionFormDialog({
 
                 <FormField
                   control={form.control}
-                  name="title"
+                  name="description"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Título</FormLabel>
+                      <FormLabel>Descripción</FormLabel>
                       <FormControl>
                         <Input 
                           {...field}
