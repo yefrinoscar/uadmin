@@ -16,4 +16,24 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   )
 }
 
-export { Input }
+type InputNumberProps = React.ComponentProps<"input">;
+
+const InputNumber = React.forwardRef<HTMLInputElement, InputNumberProps>(
+  function InputNumber({ className, type, value = "", ...props }, ref) {
+    return (
+      <Input
+        ref={ref}
+        type={type}
+        className={cn(
+          "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
+          className
+        )}
+        value={value}
+        {...props}
+      />
+    );
+  }
+);
+
+export { Input, InputNumber }
+

@@ -86,76 +86,43 @@ async function scrapeWebsite(url: string) {
 }
 
 async function scrapeJomashop(query: string): Promise<ScrapedProduct[]> {
+  // For testing purposes, return mock data instead of actually scraping Jomashop
   try {
-    const response = await axios.post('https://www.jomashop.com/graphql', {
-      operationName: 'SearchProducts',
-      variables: {
-        search: query,
-        pageSize: 5,
-        currentPage: 1,
-        sort: { relevance: 'DESC' }
+    console.log(`[MOCK] Searching Jomashop for: ${query}`);
+    return [
+      {
+        title: `Jomashop: ${query} - Luxury Watch Automatic Movement`,
+        price: 1299.99,
+        link: 'https://www.jomashop.com/sample-product-1',
+        image: 'https://www.jomashop.com/media/catalog/product/cache/bd5cfca3fd50588c189db3ff22b4cbc9/o/m/omega-speedmaster-racing-automatic-chronograph-men_s-watch-32630405001001.jpg',
+        source: 'jomashop',
+        rawPrice: '$1,299.99',
+        rating: 4.9,
+        reviews: 156
       },
-      query: `
-        query SearchProducts($search: String!, $pageSize: Int!, $currentPage: Int!, $sort: ProductAttributeSortInput) {
-          products(
-            search: $search,
-            pageSize: $pageSize,
-            currentPage: $currentPage,
-            sort: $sort
-          ) {
-            items {
-              name
-              sku
-              url_key
-              price_range {
-                minimum_price {
-                  regular_price {
-                    value
-                    currency
-                  }
-                  final_price {
-                    value
-                    currency
-                  }
-                }
-              }
-              image {
-                url
-                label
-              }
-            }
-            total_count
-          }
-        }
-      `
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Store': 'default',
-        'User-Agent': USER_AGENT,
-        'Origin': 'https://www.jomashop.com',
-        'Referer': 'https://www.jomashop.com/search'
+      {
+        title: `Jomashop: ${query} - Designer Sunglasses Polarized`,
+        price: 149.00,
+        link: 'https://www.jomashop.com/sample-product-2',
+        image: 'https://www.jomashop.com/media/catalog/product/cache/1/small_image/9df78eab33525d08d6e5fb8d27136e95/r/a/ray-ban-rb3025-aviator-gold-frame-crystal-brown-polarized-lenses-58mm-sunglasses-0rb3025-001-57-58_1.jpg',
+        source: 'jomashop',
+        rawPrice: '$149.00',
+        rating: 4.6,
+        reviews: 89
+      },
+      {
+        title: `Jomashop: ${query} - Luxury Pen Limited Edition`,
+        price: 229.50,
+        link: 'https://www.jomashop.com/sample-product-3',
+        image: 'https://www.jomashop.com/media/catalog/product/m/o/montblanc-starwalker-black-mystery-fineliner-pen-105656_1.jpg',
+        source: 'jomashop',
+        rawPrice: '$229.50',
+        rating: 4.7,
+        reviews: 43
       }
-    });
-
-    if (!response.data.data?.products?.items) {
-      throw new Error('Invalid response structure');
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return response.data.data.products.items.map((item: any) => ({
-      id: item.sku,
-      title: item.name,
-      price: item.price_range.minimum_price.final_price.value,
-      image: item.image.url,
-      source: 'jomashop',
-      url: `https://www.jomashop.com/${item.url_key}.html`,
-      link: `https://www.jomashop.com/${item.url_key}.html`,
-      rawPrice: `$${item.price_range.minimum_price.final_price.value}`
-    }));
-
+    ];
   } catch (error) {
-    console.error('Error scraping Jomashop:', error);
+    console.error('Error in mock Jomashop scraping:', error);
     return [];
   }
 }
@@ -317,75 +284,85 @@ async function scrapeBeautyCreations(query: string): Promise<ScrapedProduct[]> {
 
 // Update the type for the query parameter
 async function scrapeAmazon(query: string): Promise<ScrapedProduct[]> {
+  // For testing purposes, return mock data instead of actually scraping Amazon
   try {
-    const $ = await scrapeWebsite(`https://www.amazon.com/s?k=${encodeURIComponent(query)}`);
-    const products: ScrapedProduct[] = [];
-    
-    $('.s-result-item[data-asin]').each((i, el) => {
-      if (i >= 5) return false;
-      
-      const asin = $(el).attr('data-asin');
-      const title = $(el).find('h2 span').text().trim();
-      const priceWhole = $(el).find('.a-price-whole').text().trim();
-      const priceFraction = $(el).find('.a-price-fraction').text().trim();
-      const image = $(el).find('img.s-image').attr('src');
-      
-      // Only add if we found a valid title and price
-      if (title && (priceWhole || priceFraction)) {
-        const priceText = `${priceWhole}${priceFraction ? '.' + priceFraction : ''}`;
-        const price = parseFloat(priceText.replace(/[^0-9.]/g, ''));
-        products.push({
-          title,
-          price,
-          image,
-          source: 'amazon',
-          link: `https://www.amazon.com/dp/${asin}`,
-          rawPrice: priceText
-        });
+    console.log(`[MOCK] Searching Amazon for: ${query}`);
+    return [
+      {
+        title: `Amazon: ${query} - Wireless Headphones with Noise Cancellation`,
+        price: 129.99,
+        link: 'https://www.amazon.com/sample-product-1',
+        image: 'https://m.media-amazon.com/images/I/71+2H5MsaPL._AC_UL600_FMwebp_QL65_.jpg',
+        source: 'amazon',
+        rawPrice: '$129.99',
+        rating: 4.5,
+        reviews: 1287
+      },
+      {
+        title: `Amazon: ${query} - Smartphone 128GB Unlocked`,
+        price: 399.99,
+        link: 'https://www.amazon.com/sample-product-2',
+        image: 'https://m.media-amazon.com/images/I/71w3oJ7aWyL._AC_UY436_FMwebp_QL65_.jpg',
+        source: 'amazon',
+        rawPrice: '$399.99',
+        rating: 4.3,
+        reviews: 3452
+      },
+      {
+        title: `Amazon: ${query} - Smart Watch with Fitness Tracker`,
+        price: 89.95,
+        link: 'https://www.amazon.com/sample-product-3',
+        image: 'https://m.media-amazon.com/images/I/71jiGaztijL._AC_UL600_FMwebp_QL65_.jpg',
+        source: 'amazon',
+        rawPrice: '$89.95',
+        rating: 4.2,
+        reviews: 987
       }
-    });
-    
-    return products;
+    ];
   } catch (error) {
-    console.error('Error scraping Amazon:', error);
+    console.error('Error in mock Amazon scraping:', error);
     return [];
   }
 }
 
 async function scrapeEbay(query: string): Promise<ScrapedProduct[]> {
+  // For testing purposes, return mock data instead of actually scraping eBay
   try {
-    const $ = await scrapeWebsite(`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}`);
-    const products: ScrapedProduct[] = [];
-    
-    $('.s-item__pl-on-bottom').each((i, el) => {
-      if (i >= 5) return false;
-      
-      const itemUrl = $(el).find('a.s-item__link').attr('href') || '';
-      const title = $(el).find('.s-item__title').text().trim();
-      const priceText = $(el).find('.s-item__price').text().trim();
-      const image = $(el).find('.s-item__image-img').attr('src');
-      
-      // Filter out "Shop on eBay" text that sometimes appears in titles
-      const cleanTitle = title.replace('Shop on eBay', '').replace('New Listing', '').trim();
-      
-      // Only add if we found a valid title and price
-      if (cleanTitle && priceText && !priceText.includes('to')) {
-        // Remove currency symbols and commas, then parse as float
-        const price = parseFloat(priceText.replace(/[^0-9.]/g, ''));
-        products.push({
-          title: cleanTitle,
-          price,
-          image,
-          source: 'ebay',
-          link: itemUrl,
-          rawPrice: priceText
-        });
+    console.log(`[MOCK] Searching eBay for: ${query}`);
+    return [
+      {
+        title: `eBay: ${query} - Vintage Camera Collection`,
+        price: 249.50,
+        link: 'https://www.ebay.com/sample-item-1',
+        image: 'https://i.ebayimg.com/images/g/TN4AAOSwefJiMCiJ/s-l500.jpg',
+        source: 'ebay',
+        rawPrice: '$249.50',
+        rating: 4.8,
+        reviews: 56
+      },
+      {
+        title: `eBay: ${query} - Collectible Action Figure`,
+        price: 34.99,
+        link: 'https://www.ebay.com/sample-item-2',
+        image: 'https://i.ebayimg.com/images/g/iC4AAOSwk6xi-Zil/s-l500.jpg',
+        source: 'ebay',
+        rawPrice: '$34.99',
+        rating: 4.5,
+        reviews: 23
+      },
+      {
+        title: `eBay: ${query} - Retro Gaming Console`,
+        price: 189.00,
+        link: 'https://www.ebay.com/sample-item-3',
+        image: 'https://i.ebayimg.com/images/g/lLEAAOSwt8ljB9oC/s-l500.jpg',
+        source: 'ebay',
+        rawPrice: '$189.00',
+        rating: 4.7,
+        reviews: 112
       }
-    });
-    
-    return products;
+    ];
   } catch (error) {
-    console.error('Error scraping eBay:', error);
+    console.error('Error in mock eBay scraping:', error);
     return [];
   }
 }
