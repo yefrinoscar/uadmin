@@ -25,16 +25,21 @@ export function PricingCalculator({
   onCalculationsChange
 }: PricingCalculatorProps) {
   const [exchangeRate, setExchangeRate] = useState(3.7)
-  const { basePrice, weight, setWeight } = useRequestDetailStore()
+  const { basePrice, weight, setWeight, setBasePrice } = useRequestDetailStore()
 
   // Shipping: default $7 if no weight, else weight * 7. Tramitación and movilidad are fixed.
-  const shipping = !weight ? 7 : weight * 7;
+  const shipping = !weight || weight < 1 ? 7 : weight * 7;
   const processing = 7;
   const mobility = 5;
   const [taxPercentage] = useState(7) // Changed to 7%
   const [marginPercentage, setMarginPercentage] = useState(10)
   const [marginPEN, setMarginPEN] = useState(0)
   const [isMarginPercentage, setIsMarginPercentage] = useState(true)
+
+  // Calculate import tax (only applies if base price > $200)
+  const importTaxPercentage = 22; // 22% for import tax + 7% additional tax
+  const hasImportTax = basePrice > 200;
+  const importTax = hasImportTax ? (basePrice + (basePrice * (taxPercentage / 100))) * (importTaxPercentage / 100) : 0;
 
   useEffect(() => {
     setIsMarginPercentage(basePrice <= 50)
@@ -43,8 +48,8 @@ export function PricingCalculator({
   const calculatePrice = useCallback(() => {
     const tax = basePrice * (taxPercentage / 100)
     const margin = isMarginPercentage ? basePrice * (marginPercentage / 100) : 0
-    return basePrice + shipping + tax + processing + mobility + margin
-  }, [basePrice, shipping, taxPercentage, processing, mobility, isMarginPercentage, marginPercentage]);
+    return basePrice + shipping + tax + processing + mobility + margin + (hasImportTax ? importTax : 0)
+  }, [basePrice, shipping, taxPercentage, processing, mobility, isMarginPercentage, marginPercentage, hasImportTax, importTax]);
 
   const calculateTotalWithPENMargin = useCallback(() => {
     const usdTotal = calculatePrice()
@@ -81,7 +86,12 @@ export function PricingCalculator({
               id="basePrice"
               type="number"
               value={basePrice === 0 ? "" : basePrice}
-              disabled={true}
+              onChange={(e) => {
+                if (!disabled) {
+                  setBasePrice(Number(e.target.value));
+                }
+              }} 
+              disabled={disabled}
               className="w-full pr-8 opacity-70"
             />
             <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
@@ -197,7 +207,7 @@ export function PricingCalculator({
             <InputNumber
               id="margin"
               type="number"
-              value={isMarginPercentage ? marginPercentage : marginPEN}
+              value={(isMarginPercentage ? marginPercentage : marginPEN) === 0 ? "" : (isMarginPercentage ? marginPercentage : marginPEN)}
               onChange={(e) =>
                 isMarginPercentage
                   ? setMarginPercentage(Number(e.target.value))
@@ -222,7 +232,7 @@ export function PricingCalculator({
           <InputNumber
             id="exchangeRate"
             type="number"
-            value={exchangeRate}
+            value={exchangeRate === 0 ? "" : exchangeRate}
             onChange={(e) => setExchangeRate(Number(e.target.value))}
             className="w-full"
             step="0.01"
@@ -243,6 +253,12 @@ export function PricingCalculator({
               <div className="text-sm text-right">$ {processing.toFixed(2)}</div>
               <div className="text-sm font-medium">Impuesto ({taxPercentage}%):</div>
               <div className="text-sm text-right">$ {(basePrice * (taxPercentage / 100)).toFixed(2)}</div>
+              {hasImportTax && (
+                <>
+                  <div className="text-sm font-medium">Impuestos de importación ({importTaxPercentage}%):</div>
+                  <div className="text-sm text-right">$ {importTax.toFixed(2)}</div>
+                </>
+              )}
               <div className="text-sm font-medium">Movilidad (fijo):</div>
               <div className="text-sm text-right">$ {mobility.toFixed(2)}</div>
               {isMarginPercentage ? (
