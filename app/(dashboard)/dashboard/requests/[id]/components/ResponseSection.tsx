@@ -4,7 +4,7 @@ import { useState } from "react"
 import { CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Sparkles } from "lucide-react"
+import { Sparkles, Check, Clipboard } from "lucide-react"
 import { toast } from "sonner"
 import { Client } from "@/trpc/api/routers/requests"
 import { useTRPC } from '@/trpc/client'
@@ -25,6 +25,7 @@ export function ResponseSection({
   onChangeResponse
 }: ResponseSectionProps) {
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
   const trpc = useTRPC();
 
   // Set up tRPC mutation for generating email text
@@ -59,15 +60,46 @@ export function ResponseSection({
     }
   };
 
+  const copyToClipboard = async () => {
+    if (response) {
+      await navigator.clipboard.writeText(response);
+      setIsCopied(true);
+      toast("Copiado", {
+        description: "Respuesta copiada al portapapeles"
+      });
+      setTimeout(() => setIsCopied(false), 2000);
+    }
+  };
+
   return (
     <div className="space-y-4">
-        <CardTitle className="text-lg font-semibold">Respuesta al cliente</CardTitle>
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-lg font-semibold">Respuesta al cliente</CardTitle>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={copyToClipboard}
+                  disabled={!response}
+                  className="text-white"
+                  variant='outline'
+                >
+                  {isCopied ? <Check className="h-4 w-4" /> : <Clipboard className="h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Copiar al portapapeles</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       <div className="flex flex-col h-[calc(100%-8rem)]">
         <Textarea
           className="flex-grow min-h-[400px]"
           placeholder="Escribe la respuesta para el cliente..."
           value={response}
           disabled={isGenerating}
+          onChange={(e) => onChangeResponse(e.target.value)}
         />
       </div>
       <TooltipProvider>
