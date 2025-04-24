@@ -53,7 +53,7 @@ export function Sidebar({ user }: {
                         {
                           item.childs.map((child) => (
                             <SidebarMenuSubItem key={child.name} >
-                              <SidebarMenuButton asChild isActive={pathname === child.path} aria-disabled={item.disabled}>
+                              <SidebarMenuButton asChild isActive={pathname.startsWith(child.path)} aria-disabled={item.disabled}>
                                 <a href={child.path}>
                                   <child.icon />
                                   <span>{child.name}</span>
@@ -68,7 +68,7 @@ export function Sidebar({ user }: {
                 </Collapsible>
                 :
                 <SidebarMenuItem key={item.name} >
-                  <SidebarMenuButton asChild isActive={pathname === item.path} aria-disabled={item.disabled}>
+                  <SidebarMenuButton asChild isActive={pathname.startsWith(item.path)} aria-disabled={item.disabled}>
                     <a href={item.path}>
                       <item.icon />
                       <span>{item.name} </span>
