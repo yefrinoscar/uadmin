@@ -26,7 +26,7 @@ export const menu: MenuItemConfig[] = [
     icon: MessageSquareDot,
     path: '/dashboard/requests',
     disabled: false,
-    description: 'Gestiona tus pedidos'
+    description: 'Gestiona tus pedidos y sus estados'
   },
   {
     name: 'Promociones',

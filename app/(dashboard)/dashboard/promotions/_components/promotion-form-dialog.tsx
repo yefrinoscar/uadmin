@@ -37,8 +37,8 @@ const CONDITION_TYPES = [
 
 const formSchema = z.object({
   name: z.string(),
-  title: z.string().min(1, "El título es requerido"),
-  description: z.string().min(1, "La descripción es requerida"),
+  title: z.string().min(1, "El título es requerido").max(60, "El título debe tener menos de 60 caracteres"),
+  description: z.string().min(1, "La descripción es requerida").max(110, "La descripción debe tener menos de 110 caracteres"),
   condition_type: z.enum(["category", "tags"]),
   condition_value: z.string(),
   active: z.boolean().default(false),

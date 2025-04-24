@@ -4,7 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { Open_Sans } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner"
-import { TRPCProvider } from "./providers";
+import { TRPCReactProvider } from "@/trpc/client";
 
 const open_sans = Open_Sans({
   variable: "--font-open-sans",
@@ -37,10 +37,10 @@ export default function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            <TRPCProvider>
+            <TRPCReactProvider>
               {children}
               <Toaster position="top-right" />
-            </TRPCProvider>
+            </TRPCReactProvider>
           </ThemeProvider>
         </body>
       </html>

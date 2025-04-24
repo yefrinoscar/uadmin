@@ -28,8 +28,9 @@ import {
   verticalListSortingStrategy,
   useSortable,
 } from "@dnd-kit/sortable"
-import { api } from '@/app/providers'
 import { usePromotionsStore } from './store/promotions-store'
+import { useTRPC } from "@/trpc/client"
+import { useMutation, useSuspenseQuery } from "@tanstack/react-query"
 
 interface DroppableContainerProps {
   id: string;
@@ -91,25 +92,23 @@ const SortableItem = memo(function SortableItem({ id, children, disabled = false
 });
 
 export function PromotionsBoard() {
-  // tRPC queries/mutations
-  const utils = api.useUtils()
-  const [fetchedPromotions] = api.promotions.getAll.useSuspenseQuery({ ascending: true });
+  const trpc = useTRPC();
 
-  const createPromotionMutation = api.promotions.create.useMutation({
-    onSuccess: () => utils.promotions.getAll.invalidate()
-  });
+  // tRPC queries and mutations
+  const promotionsQueryOptions = trpc.promotions.getAll.queryOptions({ ascending: true });
+  const { data: fetchedPromotions } = useSuspenseQuery(promotionsQueryOptions);
 
-  const updatePromotionMutation = api.promotions.update.useMutation({
-    onSuccess: () => utils.promotions.getAll.invalidate()
-  });
+  const createPromotionMutationOptions = trpc.promotions.create.mutationOptions();
+  const createPromotionMutation = useMutation(createPromotionMutationOptions);
 
-  const deletePromotionMutation = api.promotions.delete.useMutation({
-    onSuccess: () => utils.promotions.getAll.invalidate()
-  });
+  const updatePromotionMutationOptions = trpc.promotions.update.mutationOptions();
+  const updatePromotionMutation = useMutation(updatePromotionMutationOptions);
 
-  const bulkUpdateStatusMutation = api.promotions.bulkUpdateStatus.useMutation({
-    onSuccess: () => utils.promotions.getAll.invalidate()
-  });
+  const deletePromotionMutationOptions = trpc.promotions.delete.mutationOptions();
+  const deletePromotionMutation = useMutation(deletePromotionMutationOptions);
+
+  const bulkUpdateStatusMutationOptions = trpc.promotions.bulkUpdateStatus.mutationOptions();
+  const bulkUpdateStatusMutation = useMutation(bulkUpdateStatusMutationOptions);
 
   // Get state and actions from Zustand store
   const {
