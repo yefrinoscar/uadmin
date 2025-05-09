@@ -28,41 +28,29 @@ import { toast } from "sonner"
 import { useMutation } from "@tanstack/react-query"
 
 const formSchema = z.object({
-  description: z.string().min(1),
-  email: z.string().email().optional(),
-  phone: z.string().optional(),
-  name: z.string().optional(),
+  description: z.string().min(1, "La descripción es requerida."),
+  email: z.preprocess(
+    (val) => (val === "" || (typeof val === "string" && val.trim() === "") ? undefined : val),
+    z.string().email("El formato del correo electrónico no es válido.").optional()
+  ),
+  phone_number: z.preprocess(
+    (val) => (val === "" || (typeof val === "string" && val.trim() === "") ? undefined : val),
+    z.string().optional()
+  ),
+  name: z.string().min(1, "El nombre es requerido."),
 }).superRefine((data, ctx) => {
-  // Check if either phone or email is provided
-  if (!data.phone || !data.email) {
-    // Add specific error for phone field
+  if (data.email === undefined && data.phone_number === undefined) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ["phone"]
+      message: "Debe proporcionar un correo electrónico o un número de teléfono.",
+      path: ["email"],
     });
-    
-    // Add specific error for email field
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ["email"]
+      message: "Debe proporcionar un correo electrónico o un número de teléfono.",
+      path: ["phone"],
     });
   }
-  if (!data.phone) {
-    // Add specific error for phone field
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["phone"]
-    });
-  }
-
-  if (!data.email) {
-    // Add specific error for phone field
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["email"]
-    });
-  }
-
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -81,7 +69,7 @@ export function AddRequestDialog({ children, onRequestAdded }: AddRequestDialogP
     defaultValues: {
       description: "",
       email: "",
-      phone: "",
+      phone_number: "",
       name: "",
     },
   })
@@ -102,6 +90,8 @@ export function AddRequestDialog({ children, onRequestAdded }: AddRequestDialogP
   const createRequestMutation = useMutation(createRequestMutationOptions);
 
   const onSubmit = async (data: FormData) => {
+    console.log("data", data);
+    
     await createRequestMutation.mutateAsync(data)
   }
 
@@ -149,7 +139,7 @@ export function AddRequestDialog({ children, onRequestAdded }: AddRequestDialogP
             />
             <FormField
               control={form.control}
-              name="phone"
+              name="phone_number"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Teléfono</FormLabel>
