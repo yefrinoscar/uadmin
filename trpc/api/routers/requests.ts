@@ -11,13 +11,13 @@ const openai = new OpenAI({
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.FROM_EMAIL || 'no-reply@dashboard.underla.lat';
 
-function formatEmailContent(content: string): string {
-  return content
-    .replace(/\n/g, '<br>')
-    .replace(/ {2,}/g, match => '&nbsp;'.repeat(match.length));
-}
+const PaginationInputSchema = z.object({
+  page: z.number().min(1).default(1),
+  pageSize: z.number().min(1).max(100).default(10),
+  status: z.enum(["pending", "in_progress", "in_transit", "completed", "cancelled", "delivered"]).optional(),
+  clientId: z.string().optional(),
+});
 
-// Define Zod schemas for validation
 const ClientSchema = z.object({
   email: z.string().email().nullable(),
   phone_number: z.string().nullable(),
@@ -29,18 +29,27 @@ const AssignedUserSchema = z.object({
   name: z.string().nullable(),
 });
 
+const ClientFilterItemSchema = z.object({
+  id: z.string(),
+  name: z.string().nullable(),
+  email: z.string().email().nullable(),
+});
+
 export const ProductSchema = z.object({
   id: z.string(),
-  request_id: z.string(),
+  request_id: z.string().optional(),
   title: z.string(),
+  base_price: z.number().nullable().optional(),
+  profit_amount: z.number().nullable().optional(),
   price: z.number(),
+  tax: z.number().nullable().optional(), // Percentage
   weight: z.number(),
   source: z.string(),
   description: z.string().nullable(),
   image_url: z.string().nullable(),
   imageData: z.string().nullable().optional(),
   created_at: z.string().nullable().optional(),
-  updated_at: z.string().nullable().optional()
+  updated_at: z.string().nullable().optional(),
 });
 
 const PurchaseRequestSchema = z.object({
@@ -48,7 +57,7 @@ const PurchaseRequestSchema = z.object({
   description: z.string(),
   client: ClientSchema.nullable(),
   assigned_user: AssignedUserSchema.nullable(),
-  status: z.enum(["pending", "approved", "rejected"]).nullable(),
+  status: z.enum(["pending", "in_progress", "in_transit", "completed", "cancelled", "delivered"]).nullable(),
   created_at: z.string().nullable(),
   updated_at: z.string().nullable(),
   price: z.number().optional().nullable(),
@@ -64,7 +73,7 @@ const PurchaseRequestListSchema = z.object({
   description: z.string(),
   client: ClientSchema.nullable(),
   assigned_user: AssignedUserSchema.nullable(),
-  status: z.enum(["pending", "approved", "rejected"]).nullable(),
+  status: z.enum(["pending", "in_progress", "in_transit", "completed", "cancelled", "delivered"]).nullable(),
   created_at: z.string().nullable(),
   updated_at: z.string().nullable(),
   price: z.number().optional().nullable(),
@@ -77,14 +86,20 @@ const PurchaseRequestListSchema = z.object({
 const CreateRequestSchema = z.object({
   description: z.string().min(1),
   email: z.string().email().optional(),
-  phone: z.string().optional(),
+  phone_number: z.string().optional(),
   name: z.string().optional(),
 }).refine((data) => {
   // At least phone or name must be provided
-  return data.phone || data.name;
+  return data.phone_number || data.email;
 }, {
-  message: "Either phone or name must be provided"
+  message: "Either phone or email must be provided"
 });
+
+function formatEmailContent(content: string): string {
+  return content
+    .replace(/\n/g, '<br>')
+    .replace(/ {2,}/g, match => '&nbsp;'.repeat(match.length));
+}
 
 export type PurchaseRequest = z.infer<typeof PurchaseRequestSchema>
 export type PurchaseRequestList = Omit<PurchaseRequest, 'products'>
@@ -92,12 +107,18 @@ export type PurchaseRequestList = Omit<PurchaseRequest, 'products'>
 export type Client = z.infer<typeof ClientSchema>
 export type Product = z.infer<typeof ProductSchema>
 
-
 export const requestsRouter = router({
   getAll: protectedProcedure
-    .output(z.array(PurchaseRequestListSchema))
-    .query(async ({ ctx }) => {
-      const { data, error } = await ctx.supabase
+    .input(PaginationInputSchema)
+    .output(z.object({
+      items: z.array(PurchaseRequestListSchema),
+      totalCount: z.number(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { page, pageSize, status, clientId } = input;
+      const offset = (page - 1) * pageSize;
+
+      let query = ctx.supabase
         .from("purchase_requests")
         .select(`
           id,
@@ -112,40 +133,85 @@ export const requestsRouter = router({
           url,
           email_sent,
           whatsapp_sent
-        `)
-        .order("created_at", { ascending: false });
+        `, { count: 'exact' }) // Request total count for filtered query
+        .order("created_at", { ascending: false })
+        .range(offset, offset + pageSize - 1);
+
+      if (status) {
+        query = query.eq('status', status);
+      }
+
+      if (clientId) {
+        query = query.eq('client_id', clientId);
+      }
+
+      const { data, error, count } = await query;
 
       if (error) {
         console.error("Error fetching requests:", error);
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to fetch purchase requests' });
       }
 
-      // Supabase might return single objects, arrays, or null for relationships. Normalize them.
       const formattedData = data.map(item => {
         let clientData = null;
         // Check if client exists and handle array/object/null cases
-        if (item.client) {
-          clientData = Array.isArray(item.client)
-            ? (item.client.length > 0 ? item.client[0] : null) // Handle empty array
-            : item.client; // Handle single object
+        if (Array.isArray(item.client)) {
+          clientData = item.client.length > 0 ? item.client[0] : null;
+        } else if (item.client) {
+          clientData = item.client;
         }
 
         let assignedUserData = null;
-        // Check if assigned_user exists and handle array/object/null cases
-        if (item.assigned_user) {
-          assignedUserData = Array.isArray(item.assigned_user)
-            ? (item.assigned_user.length > 0 ? item.assigned_user[0] : null) // Handle empty array
-            : item.assigned_user; // Handle single object
+        if (Array.isArray(item.assigned_user)) {
+          assignedUserData = item.assigned_user.length > 0 ? item.assigned_user[0] : null;
+        } else if (item.assigned_user) {
+          assignedUserData = item.assigned_user;
         }
-
+        
         return {
           ...item,
-          client: clientData,
-          assigned_user: assignedUserData
+          client: clientData ? {
+            email: clientData.email ?? null,
+            phone_number: clientData.phone_number ?? null,
+            name: clientData.name ?? null,
+          } : null,
+          assigned_user: assignedUserData ? {
+            id: assignedUserData.id,
+            name: assignedUserData.name ?? null,
+          } : null,
+          created_at: item.created_at, 
+          updated_at: item.updated_at,
+          price: item.price,
+          response: item.response,
+          url: item.url,
+          email_sent: item.email_sent,
+          whatsapp_sent: item.whatsapp_sent
         };
-      });
+      }).filter(Boolean) as PurchaseRequestList[];
 
-      return formattedData;
+      return {
+        items: formattedData,
+        totalCount: count ?? 0,
+      };
+    }),
+
+  getClientsForFilter: protectedProcedure
+    .output(z.array(ClientFilterItemSchema))
+    .query(async ({ ctx }) => {
+      const { data, error } = await ctx.supabase
+        .from('clients')
+        .select('id, name, email')
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error("Error fetching clients for filter:", error);
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to fetch clients' });
+      }
+      return data.map(client => ({
+        id: client.id,
+        name: client.name,
+        email: client.email
+      }));
     }),
 
   getById: protectedProcedure
@@ -195,13 +261,23 @@ export const requestsRouter = router({
         products: productsData || []
       };
 
+      console.log("formattedData", formattedData);
+
+      const validationResult = PurchaseRequestSchema.safeParse(formattedData);
+    if (!validationResult.success) {
+      // Combine error messages for a clearer response
+      const errorMessages = validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+console.log("errorMessages", errorMessages);    }
+
+      console.log("validationResult", validationResult);
+
       return formattedData;
     }),
 
   updateStatus: protectedProcedure
     .input(z.object({
       id: z.string(),
-      status: z.enum(["pending", "approved", "rejected"]),
+      status: z.enum(["pending", "in_progress", "in_transit", "completed", "cancelled", "delivered"]),
     }))
     .mutation(async ({ ctx, input }) => {
       const { error } = await ctx.supabase
@@ -259,6 +335,42 @@ export const requestsRouter = router({
       }
       return { success: true };
     }),
+    
+  getUsers: protectedProcedure
+    .query(async ({ ctx }) => {
+      const { data, error } = await ctx.supabase
+        .from("users")
+        .select("id, name")
+        .order("name");
+
+      if (error) {
+        console.error("Error fetching users:", error);
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to fetch users' });
+      }
+
+      return data;
+    }),
+    
+  updateAssignedUser: protectedProcedure
+    .input(z.object({ 
+      requestId: z.string(), 
+      userId: z.string().nullable() 
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase
+        .from("purchase_requests")
+        .update({
+          assigned_user: input.userId ? input.userId : null,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", input.requestId);
+
+      if (error) {
+        console.error("Error updating assigned user:", error);
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update assigned user' });
+      }
+      return { success: true };
+    }),
 
   generateEmailText: protectedProcedure
     .input(z.object({
@@ -271,7 +383,11 @@ export const requestsRouter = router({
                     Address the client as "${input.clientName}". The final price is $ ${input.totalUSD.toFixed(2)} or S/. ${input.totalPEN.toFixed(2)}. 
                     Explain the quotation briefly in simple terms for an average person. Mention that after the product arrives to Miami, 
                     it will take a maximum of 7 days to reach the customer. 
-                    Keep the email concise and friendly. Do not include specific percentages or breakdowns of the costs. Write it in Spanish. Do not include a signature. Make sure the email ends with a period.`;
+                    Keep the email concise and friendly. Do not include specific percentages or breakdowns of the costs. Write it in Spanish. 
+                    Do not include a signature. Make sure the email ends with a period. 
+                    Make sure to tell client 50% is for advance payment and 50% is for delivery. tel client is just for release of store only this promotion of 50/50, make sure to write it in uppercase and exclamations.
+                    Tell client that they can pay with bank transfer or credit card with a fee of 5% of the total price.
+                    `;
       
       try {
         const completion = await openai.chat.completions.create({
@@ -423,7 +539,7 @@ export const requestsRouter = router({
   updateProduct: protectedProcedure
     .input(z.object({
       requestId: z.string(),
-      product: ProductSchema,
+      product: ProductSchema
     }))
     .mutation(async ({ ctx, input }) => {
       try {
@@ -518,6 +634,8 @@ export const requestsRouter = router({
               description: processedProduct.description || '',
               source: processedProduct.source,
               image_url: processedProduct.image_url || null,
+              base_price: processedProduct.base_price,
+              profit_amount: processedProduct.profit_amount,
               updated_at: new Date().toISOString()
             })
             .eq("request_id", requestId)
@@ -543,6 +661,8 @@ export const requestsRouter = router({
               description: processedProduct.description || '',
               source: processedProduct.source,
               image_url: processedProduct.image_url || null,
+              base_price: processedProduct.base_price || processedProduct.price,
+              profit_amount: processedProduct.profit_amount || 0,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
             });

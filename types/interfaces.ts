@@ -55,6 +55,7 @@ export interface Product {
   name: string
   description?: string
   unit_price: number
+  tax?: number
   warranty_months?: number
   unit?: string
   brand?: string

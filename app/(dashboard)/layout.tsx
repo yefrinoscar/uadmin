@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/sidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { currentUser } from "@clerk/nextjs/server";
+import { NavigationProgress } from "@/components/navigation-progress";
 
 export default async function DashboardLayout({
   children,
@@ -20,6 +21,7 @@ export default async function DashboardLayout({
           <div className="mx-auto container">
             {children}
           </div>
+          <NavigationProgress />
         </main>
       </div>
     </SidebarProvider>

@@ -1,6 +1,7 @@
 "use client"
 
-import React, { useState, useRef, ReactNode } from "react"
+import React, { useState, useRef, ReactNode, useEffect } from "react"
+import Image from "next/image";
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
@@ -22,19 +23,24 @@ import {
   FormField,
   FormItem,
   FormLabel,
+  FormDescription,
 } from "@/components/ui/form"
 import { v4 as uuidv4 } from "uuid"
-import { ImagePlus, X } from "lucide-react"
+import { ImagePlus, X, DollarSign } from "lucide-react"
 import { Product } from "@/trpc/api/routers/requests"
+import { useRequestDetailStore } from "@/store/requestDetailStore"
 
 // Define the schema for our form
 const productSchema = z.object({
   title: z.string().min(1),
-  price: z.coerce.number().min(0),
-  weight: z.coerce.number().min(0),
+  price: z.coerce.number().min(0).optional(),
+  base_price: z.coerce.number().min(0),
+  profit_amount: z.coerce.number().min(0).default(0),
+  tax: z.coerce.number().min(0).default(7),
+  weight: z.coerce.number().min(0.1).default(0.5),
   description: z.string().optional(),
   source: z.string().optional(),
-  imageData: z.string().optional()
+  imageData: z.string().optional(),
 })
 
 // Define the type based on the schema
@@ -49,12 +55,29 @@ export function AddProductDialog({
   onAddProduct,
   children
 }: AddProductDialogProps) {
-  const [open, onOpenChange] = useState(false);
+  const [open, setOpen] = useState(false)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { setCalculations, calculations } = useRequestDetailStore();
+
+  const form = useForm<ProductFormData>({
+    resolver: zodResolver(productSchema),
+    defaultValues: {
+      title: "",
+      price: undefined,
+      weight: 0.5,
+      description: "",
+      source: "manual",
+      imageData: "",
+      // Set base_price as 0 initially to align with schema
+      base_price: 0,
+      profit_amount: 0,
+      tax: 7,
+    },
+  });
 
   // Reset form and image preview when dialog closes
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) {
       form.reset();
       setImagePreview(null);
@@ -62,43 +85,63 @@ export function AddProductDialog({
         fileInputRef.current.value = "";
       }
     }
-  }, [open]);
+  }, [open, form]);
 
-  const form = useForm<ProductFormData>({
-    resolver: zodResolver(productSchema),
-    defaultValues: {
-      title: "",
-      price: undefined,
-      weight: 0,
-      description: "",
-      source: "manual",
-      imageData: "",
-    },
-  })
+  // Calculate price with profit and tax
+  const basePrice = form.watch("base_price")
+  const profitAmount = form.watch("profit_amount")
+  const tax = form.watch("tax")
+
+  // Memoize calculatedFinalPrice to prevent unnecessary recalculations
+  const calculatedFinalPrice = React.useMemo(() => {
+    const numericBasePrice = Number(basePrice) || 0;
+    const numericProfitAmount = Number(profitAmount) || 0;
+    const numericTax = Number(tax) || 0;
+
+    if (isNaN(numericBasePrice)) return 0;
+
+    const priceWithProfit = numericBasePrice + numericProfitAmount;
+    const finalPrice = priceWithProfit * (1 + numericTax / 100);
+    return parseFloat(finalPrice.toFixed(2));
+  }, [basePrice, profitAmount, tax]);
 
   const onSubmit = (data: ProductFormData) => {
-    // Create a complete Product object with an ID
+    if (calculatedFinalPrice === undefined || calculatedFinalPrice === null || isNaN(calculatedFinalPrice)) {
+      console.error("calculatedFinalPrice is not a valid number", calculatedFinalPrice);
+      // Optionally, show an error to the user
+      return;
+    }
+
     const product: Product = {
       id: uuidv4(),
       title: data.title,
-      price: Number(data.price),
+      price: calculatedFinalPrice, // Use the price with profit and tax included
       weight: data.weight,
       description: data.description || "",
       source: (data.source?.toLowerCase() || "manual") as "amazon" | "ebay" | "jomashop" | "manual",
       imageData: imagePreview || null,
       image_url: null,
-      request_id: ""  // This will be set by the parent component
-    }
+      request_id: "",  // This will be set by the parent component
+      base_price: data.base_price,
+      profit_amount: data.profit_amount,
+      tax: data.tax,
+    };
+
+    // Set the calculator to disable profit since it's already included in the product price
+    setCalculations({
+      ...calculations,
+      disableProfit: true
+    });
 
     onAddProduct(product);
-    onOpenChange(false);
+    setOpen(false);
 
     form.reset()
     setImagePreview(null)
   }
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
     if (!file) return
 
     // Check file size (max 2MB)
@@ -108,10 +151,10 @@ export function AddProductDialog({
     }
 
     const reader = new FileReader()
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        setImagePreview(event.target.result as string)
-        form.setValue("imageData", event.target.result as string)
+    reader.onload = (loadEvent: ProgressEvent<FileReader>) => { 
+      if (loadEvent.target?.result) {
+        setImagePreview(loadEvent.target.result as string)
+        form.setValue("imageData", loadEvent.target.result as string)
       }
     }
     reader.readAsDataURL(file)
@@ -126,7 +169,7 @@ export function AddProductDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
@@ -155,12 +198,17 @@ export function AddProductDialog({
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="price"
+                name="base_price"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Precio ($)</FormLabel>
+                    <FormLabel>Precio base ($)</FormLabel>
                     <FormControl>
-                      <InputNumber type="number" placeholder="100" {...field} />
+                      <div className="relative">
+                        <InputNumber type="number" placeholder="100" {...field} />
+                        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                          <DollarSign className="h-4 w-4 text-gray-500" />
+                        </div>
+                      </div>
                     </FormControl>
                   </FormItem>
                 )}
@@ -171,14 +219,73 @@ export function AddProductDialog({
                 name="weight"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Peso (kg)</FormLabel>
+                    <FormLabel>Peso (kg) *</FormLabel>
                     <FormControl>
-                    <InputNumber type="number" placeholder="2" {...field} />
+                      <InputNumber 
+                        type="number" 
+                        placeholder="0.5" 
+                        {...field} 
+                        min="0.1"
+                        step="0.1"
+                        required
+                      />
                     </FormControl>
+                    {/* <FormDescription className="text-xs">
+                      Mínimo 0.1 kg
+                    </FormDescription> */}
                   </FormItem>
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="profit_amount"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Ganancia (USD)</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <InputNumber 
+                        type="number" 
+                        placeholder="20" 
+                        {...field} 
+                        min="0"
+                        step="0.01"
+                      />
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                        <DollarSign className="h-4 w-4 text-gray-500" />
+                      </div>
+                    </div>
+                  </FormControl>
+                  <FormDescription className="text-xs">
+                    Subtotal: ${(Number(basePrice || 0) + Number(profitAmount || 0)).toFixed(2)} / Precio Final (con impuesto): ${((Number(basePrice || 0) + Number(profitAmount || 0)) * (1 + Number(tax || 0) / 100)).toFixed(2)}
+                  </FormDescription>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="tax"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Impuesto (%)</FormLabel>
+                  <FormControl>
+                    <InputNumber 
+                      type="number" 
+                      placeholder="7" 
+                      {...field} 
+                      min="0"
+                      step="0.01"
+                    />
+                  </FormControl>
+                  <FormDescription className="text-xs">
+                    Porcentaje de impuesto sobre el subtotal (base + ganancia).
+                  </FormDescription>
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}
@@ -202,8 +309,8 @@ export function AddProductDialog({
                   <div className="space-y-2">
                     <div className="flex flex-col items-center justify-center">
                       {imagePreview ? (
-                        <div className="relative w-full">
-                          <img src={imagePreview} alt="Vista previa" className="h-40 w-full object-contain rounded-md border" />
+                        <div className="relative w-full h-40">
+                          <Image src={imagePreview} alt="Vista previa" layout="fill" objectFit="contain" className="rounded-md border" />
                           <button
                             type="button"
                             onClick={clearImage}

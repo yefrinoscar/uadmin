@@ -1,303 +1,292 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { Input, InputNumber } from "@/components/ui/input"
+import { useEffect, useState } from "react"
+import { InputNumber } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { DollarSign, Percent, Weight } from "lucide-react"
-import { useRequestDetailStore } from "@/store/requestDetailStore"
+import { DollarSign, Weight, TrendingUp } from "lucide-react"
+import { usePricingCalculations } from "@/hooks/usePricingCalculations"
+import { PricingConstants } from "@/config/pricing-constants"
 
 type PricingCalculatorProps = {
   className?: string
+  basePrice?: number
+  weight?: number
+  marginPEN?: number
+  taxPercentage?: number
   disabled?: boolean
   onCalculationsChange?: (calculations: {
     totalUSD: number
-    totalPEN: number
-    exchangeRate: number
-    weight: number
+    totalCosts: number
   }) => void
 }
 
 export function PricingCalculator({
   className,
+  basePrice = 0,
+  weight = 0,
+  marginPEN = PricingConstants.DEFAULT_MARGIN_PEN,
+  taxPercentage = PricingConstants.DEFAULT_TAX_PERCENTAGE,
   disabled = false,
   onCalculationsChange
 }: PricingCalculatorProps) {
-  const [exchangeRate, setExchangeRate] = useState(3.7)
-  const { basePrice, weight, setWeight, setBasePrice } = useRequestDetailStore()
+  // Local state for form inputs
+  const [_basePrice, setBasePrice] = useState(basePrice)
+  const [_weight, setWeight] = useState(weight)
+  const [_marginPEN, setMarginPEN] = useState(marginPEN)
 
-  // Shipping: default $7 if no weight, else weight * 7. Tramitación and movilidad are fixed.
-  const shipping = !weight || weight < 1 ? 7 : weight * 7;
-  const processing = 7;
-  const mobility = 5;
-  const [taxPercentage] = useState(7) // Changed to 7%
-  const [marginPercentage, setMarginPercentage] = useState(10)
-  const [marginPEN, setMarginPEN] = useState(0)
-  const [isMarginPercentage, setIsMarginPercentage] = useState(true)
+  // Use our custom hook for all pricing calculations
+  const pricing = usePricingCalculations({
+    basePrice: _basePrice,
+    weight: _weight,
+    initialMarginPEN: _marginPEN,
+    initialTaxPercentage: taxPercentage
+  })
 
-  // Calculate import tax (only applies if base price > $200)
-  const importTaxPercentage = 22; // 22% for import tax + 7% additional tax
-  const hasImportTax = basePrice > 200;
-  const importTax = hasImportTax ? (basePrice + (basePrice * (taxPercentage / 100))) * (importTaxPercentage / 100) : 0;
+  // Extract just what we need for the parent component
+  const { totalUSD, totalCosts } = pricing
 
+  // Update margin PEN when pricing.marginPEN changes
   useEffect(() => {
-    setIsMarginPercentage(basePrice <= 50)
-  }, [basePrice])
-
-  const calculatePrice = useCallback(() => {
-    const tax = basePrice * (taxPercentage / 100)
-    const margin = isMarginPercentage ? basePrice * (marginPercentage / 100) : 0
-    return basePrice + shipping + tax + processing + mobility + margin + (hasImportTax ? importTax : 0)
-  }, [basePrice, shipping, taxPercentage, processing, mobility, isMarginPercentage, marginPercentage, hasImportTax, importTax]);
-
-  const calculateTotalWithPENMargin = useCallback(() => {
-    const usdTotal = calculatePrice()
-    if (!isMarginPercentage) {
-      return usdTotal + (marginPEN / exchangeRate)
+    if (pricing.marginPEN !== marginPEN) {
+      setMarginPEN(pricing.marginPEN)
     }
-    return usdTotal
-  }, [calculatePrice, isMarginPercentage, marginPEN, exchangeRate]);
+  }, [pricing.marginPEN])
 
+  // Send only shippingCosts and totalUSD to parent components
   useEffect(() => {
     if (!onCalculationsChange) return;
     const handler = setTimeout(() => {
-      const totalUSD = calculateTotalWithPENMargin();
       onCalculationsChange({
         totalUSD,
-        totalPEN: totalUSD * exchangeRate,
-        exchangeRate,
-        weight
+        totalCosts
       });
     }, 400);
     return () => clearTimeout(handler);
-  }, [exchangeRate, calculateTotalWithPENMargin, onCalculationsChange, weight, shipping, mobility]);
+  }, [totalUSD, totalCosts, onCalculationsChange]);
 
+  // Render component with a clean, modular structure
   return (
-    <div className={`space-y-4 ${className}`}>
-      <h3 className="text-lg font-medium">Cálculo de Precios</h3>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="basePrice" className="text-sm font-medium">
-            Precio Base (USD)
-          </Label>
-          <div className="relative">
-            <InputNumber
-              id="basePrice"
-              type="number"
-              value={basePrice === 0 ? "" : basePrice}
-              onChange={(e) => {
-                if (!disabled) {
-                  setBasePrice(Number(e.target.value));
-                }
-              }} 
-              disabled={disabled}
-              className="w-full pr-8 opacity-70"
-            />
-            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-              <DollarSign className="h-4 w-4 text-gray-500" />
-            </div>
-          </div>
-        </div>
+    <Card className={`${className}`}>
+      <CardHeader>
+        <CardTitle>Calculadora de Precios</CardTitle>
+        <CardDescription>
+          Calcula el precio final de un producto incluyendo costos de envío,
+          impuestos y ganancia.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-6">
+          {/* Input Fields Section */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Datos del Producto</h3>
+            <div className="grid grid-cols-2 gap-4">
+              {/* Base Price Input */}
+              <div className="space-y-2">
+                <Label htmlFor="basePrice" className="text-sm font-medium">
+                  Precio Base (USD)
+                </Label>
+                <div className="relative">
+                  <InputNumber
+                    id="basePrice"
+                    type="number"
+                    value={_basePrice === 0 ? "" : _basePrice}
+                    onChange={(e) => {
+                      if (!disabled) {
+                        const value = Number(e.target.value);
+                        setBasePrice(value);
+                      }
+                    }}
+                    disabled={disabled}
+                    className="w-full pr-8"
+                    step="0.01"
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <DollarSign className="h-4 w-4 text-gray-500" />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Equivalente a S/. {(basePrice * pricing.exchangeRate).toFixed(2)} PEN
+                </p>
+              </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="weight" className="text-sm font-medium">
-            Peso (kg)
-          </Label>
-          <div className="relative">
-            <InputNumber
-              id="weight"
-              type="number"
-              value={weight}
-              onChange={(e) => {
-                if (!disabled) {
-                  setWeight(Number(e.target.value));
-                }
-              }}
-              disabled={disabled}
-              className={`w-full pr-8 ${disabled ? 'opacity-70' : ''}`}
-              step="0.01"
-            />
-            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-              <Weight className="h-4 w-4 text-gray-500" />
-            </div>
-          </div>
-        </div>
+              {/* Weight Input */}
+              <div className="space-y-2">
+                <Label htmlFor="weight" className="text-sm font-medium">
+                  Peso (kg)
+                </Label>
+                <div className="relative">
+                  <InputNumber
+                    id="weight"
+                    type="number"
+                    value={_weight === 0 ? "" : _weight}
+                    onChange={(e) => {
+                      if (!disabled) {
+                        const value = Number(e.target.value);
+                        setWeight(value);
+                      }
+                    }}
+                    disabled={disabled}
+                    className="w-full pr-8"
+                    step="0.01"
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <Weight className="h-4 w-4 text-gray-500" />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Costo de envío: ${pricing.shipping.toFixed(2)} USD
+                </p>
+              </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="shipping" className="text-sm font-medium">
-            Envío (USD)
-          </Label>
-          <div className="relative">
-            <InputNumber
-              id="shipping"
-              type="number"
-              value={shipping}
-              disabled
-              className="w-full pr-8 opacity-70"
-              step="0.01"
-            />
-            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-              <DollarSign className="h-4 w-4 text-gray-500" />
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="tramitacion" className="text-sm font-medium">
-            Tramitación (USD)
-          </Label>
-          <div className="relative">
-            <InputNumber
-              id="tramitacion"
-              type="number"
-              value={processing}
-              disabled
-              className="w-full pr-8 opacity-70"
-              step="0.01"
-            />
-            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-              <DollarSign className="h-4 w-4 text-gray-500" />
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="movilidad" className="text-sm font-medium">
-            Movilidad (USD)
-          </Label>
-          <div className="relative">
-            <InputNumber
-              id="movilidad"
-              type="number"
-              value={mobility}
-              disabled
-              className="w-full pr-8 opacity-70"
-              step="0.01"
-            />
-            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-              <DollarSign className="h-4 w-4 text-gray-500" />
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="tax" className="text-sm font-medium">
-            Impuesto
-          </Label>
-          <div className="relative">
-            <Input
-              id="tax"
-              type="number"
-              value={taxPercentage}
-              disabled
-              className="w-full pr-8 opacity-70"
-            />
-            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-              <Percent className="h-4 w-4 text-gray-500" />
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="margin" className="text-sm font-medium">
-            Ganancia {isMarginPercentage ? '(%)' : '(PEN)'}
-          </Label>
-          <div className="relative">
-            <InputNumber
-              id="margin"
-              type="number"
-              value={(isMarginPercentage ? marginPercentage : marginPEN) === 0 ? "" : (isMarginPercentage ? marginPercentage : marginPEN)}
-              onChange={(e) =>
-                isMarginPercentage
-                  ? setMarginPercentage(Number(e.target.value))
-                  : setMarginPEN(Number(e.target.value))
-              }
-              className="w-full pr-8"
-            />
-            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-              {isMarginPercentage ? (
-                <Percent className="h-4 w-4 text-gray-500" />
-              ) : (
-                <span className="text-sm text-gray-500">S/.</span>
+              {/* Profit Margin Input */}
+              {!disabled && (
+                <div className="space-y-2">
+                  <Label htmlFor="marginPEN" className="text-sm font-medium">
+                    Ganancia (PEN)
+                  </Label>
+                  <div className="relative">
+                    <InputNumber
+                      id="marginPEN"
+                      type="number"
+                      value={_marginPEN}
+                      onChange={(e) => {
+                        if (!disabled) {
+                          const value = Number(e.target.value);
+                          setMarginPEN(value);
+                          pricing.setMarginPEN(value);
+                        }
+                      }}
+                      disabled={disabled}
+                      className="w-full pr-8"
+                      step="1"
+                      min="0"
+                    />
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                      <TrendingUp className="h-4 w-4 text-gray-500" />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Equivalente a ${(marginPEN / pricing.exchangeRate).toFixed(2)} USD
+                  </p>
+                </div>
               )}
             </div>
           </div>
-        </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="exchangeRate" className="text-sm font-medium">
-            Tipo de Cambio
-          </Label>
-          <InputNumber
-            id="exchangeRate"
-            type="number"
-            value={exchangeRate === 0 ? "" : exchangeRate}
-            onChange={(e) => setExchangeRate(Number(e.target.value))}
-            className="w-full"
-            step="0.01"
-          />
-        </div>
-      </div>
+          <Separator />
 
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium">Resumen de Precios</h3>
-        <Card>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="text-sm font-medium">Valor del producto:</div>
-              <div className="text-sm text-right">$ {basePrice.toFixed(2)}</div>
-              <div className="text-sm font-medium">Envío:</div>
-              <div className="text-sm text-right">$ {shipping.toFixed(2)}</div>
-              <div className="text-sm font-medium">Tramitación:</div>
-              <div className="text-sm text-right">$ {processing.toFixed(2)}</div>
-              <div className="text-sm font-medium">Impuesto ({taxPercentage}%):</div>
-              <div className="text-sm text-right">$ {(basePrice * (taxPercentage / 100)).toFixed(2)}</div>
-              {hasImportTax && (
-                <>
-                  <div className="text-sm font-medium">Impuestos de importación ({importTaxPercentage}%):</div>
-                  <div className="text-sm text-right">$ {importTax.toFixed(2)}</div>
-                </>
-              )}
-              <div className="text-sm font-medium">Movilidad (fijo):</div>
-              <div className="text-sm text-right">$ {mobility.toFixed(2)}</div>
-              {isMarginPercentage ? (
-                <>
-                  <div className="text-sm font-medium">Ganancia ({marginPercentage}%):</div>
-                  <div className="text-sm text-right">$ {(basePrice * (marginPercentage / 100)).toFixed(2)}</div>
-                </>
-              ) : null}
+          {/* Price Summary Section */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Resumen de Precios</h3>
+            <div className="space-y-4">
+              {/* USD Costs */}
+              <div className="space-y-2">
+                {/* Product Value */}
+                <div className="flex justify-between">
+                  <span className="text-sm">Valor del producto:</span>
+                  <span className="text-sm font-medium">${_basePrice.toFixed(2)}</span>
+                </div>
 
-              <Separator className="col-span-2 my-2" />
+                {/* Shipping Cost */}
+                <div className="flex justify-between">
+                  <span className="text-sm">Envío:</span>
+                  <span className="text-sm font-medium">${pricing.shipping.toFixed(2)}</span>
+                </div>
 
-              <div className="text-base font-bold">Total USD:</div>
-              <div className="text-base font-bold text-right">$ {calculatePrice().toFixed(2)}</div>
+                {/* Processing Fee */}
+                <div className="flex justify-between">
+                  <span className="text-sm">Tramitación:</span>
+                  <span className="text-sm font-medium">${pricing.processing.toFixed(2)}</span>
+                </div>
 
-              {!isMarginPercentage ? (
-                <>
-                  <div className="text-base font-bold pt-1">Total PEN (TC: {exchangeRate}):</div>
-                  <div className="text-base font-bold text-right pt-1">
-                    S/. {(calculatePrice() * exchangeRate).toFixed(2)}
+                {/* Mobility Fee */}
+                <div className="flex justify-between">
+                  <span className="text-sm">Movilidad:</span>
+                  <span className="text-sm font-medium">${pricing.mobility.toFixed(2)}</span>
+                </div>
+
+                {/* Tax Information */}
+                {!disabled && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-sm">Impuesto ({pricing.taxPercentage}%):</span>
+                      <span className="text-sm font-medium">${pricing.taxAmount.toFixed(2)}</span>
+                    </div>
+                    {pricing.hasImportTax && (
+                      <div className="flex justify-between">
+                        <span className="text-sm">Imp. importación (22%):</span>
+                        <span className="text-sm font-medium">${pricing.importTax.toFixed(2)}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+
+
+              </div>
+
+              <Separator />
+
+              {/* Totals Section */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* USD Total */}
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-base font-bold">Total:</span>
+                    <span className="text-base font-bold">${totalUSD.toFixed(2)}</span>
                   </div>
-                  <div className="text-sm font-medium">Ganancia (PEN):</div>
-                  <div className="text-sm text-right">S/. {marginPEN.toFixed(2)}</div>
-                  <div className="text-base font-bold pt-1 border-t mt-1">Total PEN con ganancia:</div>
-                  <div className="text-base font-bold text-right pt-1 border-t mt-1">
-                    S/. {((calculatePrice() * exchangeRate) + parseFloat(marginPEN.toFixed(2))).toFixed(2)}
+
+                  {/* USD Profit - Conditional */}
+                  {!disabled && (
+                    <div className="flex justify-between">
+                      <span className="text-sm">Ganancia:</span>
+                      <span className="text-sm font-medium">${(marginPEN / pricing.exchangeRate).toFixed(2)}</span>
+                    </div>
+                  )}
+
+                  {/* Total USD with Profit - Conditional */}
+                  {!disabled && (
+                    <div className="flex justify-between pt-1 border-t mt-1">
+                      <span className="text-base font-bold">Total con ganancia:</span>
+                      <span className="text-base font-bold">${pricing.totalWithPENMargin.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* PEN Total */}
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-base font-bold">Total:</span>
+                    <span className="text-base font-bold">S/. {pricing.totalPEN.toFixed(2)}</span>
                   </div>
-                </>
-              ) : (
-                <>
-                  <div className="text-base font-bold pt-1">Total PEN (TC: {exchangeRate}):</div>
-                  <div className="text-base font-bold text-right pt-1">
-                    S/. {(calculatePrice() * exchangeRate).toFixed(2)}
-                  </div>
-                </>
-              )}
+
+                  {/* PEN Profit - Conditional */}
+                  {!disabled && (
+                    <div className="flex justify-between">
+                      <span className="text-sm">Ganancia:</span>
+                      <span className="text-sm font-medium">S/. {pricing.marginPEN.toFixed(2)}</span>
+                    </div>
+                  )}
+
+                  {/* Total PEN with Profit - Conditional */}
+                  {!disabled && (
+                    <div className="flex justify-between pt-1 border-t mt-1">
+                      <span className="text-base font-bold">Total con ganancia:</span>
+                      <span className="text-base font-bold">S/. {pricing.totalPENWithMargin.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Exchange Rate Info */}
+              <div className="text-xs text-muted-foreground text-center">
+                Tipo de cambio: ${1} = S/. {pricing.exchangeRate}
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
-} 
+}

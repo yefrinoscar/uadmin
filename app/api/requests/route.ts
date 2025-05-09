@@ -17,9 +17,12 @@ const requestSchema = z.object({
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    console.log("body", body); 
 
     // Validate input using Zod
     const validationResult = requestSchema.safeParse(body);
+
+    console.log("validationResult", validationResult); 
 
     if (!validationResult.success) {
       // Combine error messages for a clearer response
@@ -33,6 +36,10 @@ export async function POST(request: Request) {
     const supabase = createAuthenticatedClient();
 
     let clientId: string | null = null;
+
+    console.log("email", email);
+    console.log("phone_number", phone_number);
+    
 
     // Find or create client
     if (email || phone_number) {
@@ -75,6 +82,8 @@ export async function POST(request: Request) {
     }
 
     if (!clientId) {
+      console.error('Error creating client:');
+
        throw new Error('Failed to obtain client ID');
     }
 

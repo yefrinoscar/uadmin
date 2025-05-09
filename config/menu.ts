@@ -5,6 +5,7 @@ import {
   Files,
   FileSearch,
   FileSignature,
+  ShoppingBag
 } from "lucide-react";
 
 // Define the structure for a menu item, including potential children
@@ -35,6 +36,14 @@ export const menu: MenuItemConfig[] = [
     path: '/dashboard/promotions',
     disabled: false,
     description: 'Gestiona las promociones activas que hay en la tienda'
+  },
+  {
+    name: 'Ventas',
+    url: '',
+    icon: ShoppingBag,
+    path: '/dashboard/sales',
+    disabled: false,
+    description: 'Gestiona tus ventas y analiza tus ganancias'
   },
   {
     name: 'Calculadora',

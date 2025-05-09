@@ -4,7 +4,6 @@ import { create } from "zustand"
 import { toast } from "sonner"
 import { Product } from "@/trpc/api/routers/requests"
 
-
 export interface Request {
   id: string
   status: string
@@ -29,7 +28,7 @@ export interface Request {
 interface RequestDetailState {
   // Data
   request: Request | null
-  selectedProducts: Product[]
+  products: Product[]
   basePrice: number
   shipping: number
   tax: number
@@ -38,6 +37,11 @@ interface RequestDetailState {
   response: string
   calculations: any
   weight: number
+  exchangeRate: number
+  totalGeneralPEN: number
+  totalGeneralUSD: number
+  finalPricePEN: number
+  finalPriceDisplayCurrency: "PEN" | "USD"
   
   // UI state
   loading: boolean
@@ -47,7 +51,7 @@ interface RequestDetailState {
   
   // Actions
   setRequest: (request: any) => void
-  setSelectedProducts: (products: Product[]) => void
+  setProducts: (products: Product[]) => void
   addProduct: (product: Product) => void
   removeProduct: (productId: string) => void
   setBasePrice: (price: number) => void
@@ -62,12 +66,17 @@ interface RequestDetailState {
   setIsSendingEmail: (isSendingEmail: boolean) => void
   setEmailSent: (emailSent: boolean) => void
   setWeight: (weight: number) => void
+  setExchangeRate: (rate: number) => void
+  setTotalGeneralPEN: (amount: number) => void
+  setTotalGeneralUSD: (amount: number) => void
+  setFinalPricePEN: (price: number) => void
+  setFinalPriceDisplayCurrency: (currency: "PEN" | "USD") => void
 }
 
 export const useRequestDetailStore = create<RequestDetailState>((set) => ({
   // Initial state
   request: null,
-  selectedProducts: [],
+  products: [],
   basePrice: 0,
   shipping: 0,
   tax: 0,
@@ -80,14 +89,19 @@ export const useRequestDetailStore = create<RequestDetailState>((set) => ({
   isSendingEmail: false,
   emailSent: false,
   weight: 0,
+  exchangeRate: 3.7,
+  totalGeneralPEN: 0,
+  totalGeneralUSD: 0,
+  finalPricePEN: 0,
+  finalPriceDisplayCurrency: "PEN" as "PEN" | "USD",
 
   // Actions
   setRequest: (request) => set({ request }),
   
-  setSelectedProducts: (products) => {
-    set({ selectedProducts: products })
+  setProducts: (products) => {
+    set({ products })
     // Recalculate totals when products change
-    const basePrice = products.reduce((sum, product) => sum + product.price, 0)
+    const basePrice = products.reduce((sum, product) => sum + (product.base_price || 0), 0)
     const weight = products.reduce((sum, product) => sum + (product.weight || 0), 0)
     set({ basePrice, weight })
     // Calculate total
@@ -98,11 +112,11 @@ export const useRequestDetailStore = create<RequestDetailState>((set) => ({
   
   addProduct: (product) => {
     set((state) => {
-      const products = [...state.selectedProducts, product]
-      const basePrice = products.reduce((sum, p) => sum + p.price, 0)
+      const products = [...state.products, product]
+      const basePrice = products.reduce((sum, p) => sum + (p.base_price || 0), 0)
       const weight = products.reduce((sum, p) => sum + (p.weight || 0), 0)
       return { 
-        selectedProducts: products,
+        products: products,
         basePrice: basePrice,
         weight: weight,
         total: basePrice + state.shipping + state.tax
@@ -113,11 +127,11 @@ export const useRequestDetailStore = create<RequestDetailState>((set) => ({
   
   removeProduct: (productId) => {
     set((state) => {
-      const products = state.selectedProducts.filter(product => product.id !== productId)
-      const basePrice = products.reduce((sum, p) => sum + p.price, 0)
+      const products = state.products.filter(product => product.id !== productId)
+      const basePrice = products.reduce((sum, p) => sum + (p.base_price || 0), 0)
       const weight = products.reduce((sum, p) => sum + (p.weight || 0), 0)
       return { 
-        selectedProducts: products,
+        products,
         basePrice: basePrice,
         weight: weight,
         total: basePrice + state.shipping + state.tax
@@ -127,6 +141,8 @@ export const useRequestDetailStore = create<RequestDetailState>((set) => ({
   },
   
   setBasePrice: (basePrice) => {
+    console.log('HOLAS', basePrice);
+    
     set((state) => ({ 
       basePrice,
       total: basePrice + state.shipping + state.tax
@@ -158,5 +174,10 @@ export const useRequestDetailStore = create<RequestDetailState>((set) => ({
   setCalculations: (calculations) => set({ calculations }),
   setIsSendingEmail: (isSendingEmail) => set({ isSendingEmail }),
   setEmailSent: (emailSent) => set({ emailSent }),
-  setWeight: (weight) => set({ weight })
+  setWeight: (weight) => set({ weight }),
+  setExchangeRate: (rate) => set({ exchangeRate: rate }),
+  setTotalGeneralPEN: (amount) => set({ totalGeneralPEN: amount }),
+  setTotalGeneralUSD: (amount) => set({ totalGeneralUSD: amount }),
+  setFinalPricePEN: (price) => set({ finalPricePEN: price }),
+  setFinalPriceDisplayCurrency: (currency) => set({ finalPriceDisplayCurrency: currency })
 })) 
