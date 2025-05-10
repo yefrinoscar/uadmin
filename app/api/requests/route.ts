@@ -9,6 +9,7 @@ const requestSchema = z.object({
   email: z.string().email({ message: 'Invalid email format' }).optional(),
   phone_number: z.string().optional(),
   name: z.string().optional(),
+  user_id: z.string().optional(),
 }).refine(data => data.email || data.phone_number, {
   message: 'Either email or phone number is required',
   path: ['email', 'phone_number'], // Optional: specify the path for the error
@@ -17,12 +18,12 @@ const requestSchema = z.object({
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    console.log("body", body); 
+    console.log("body", body);
 
     // Validate input using Zod
     const validationResult = requestSchema.safeParse(body);
 
-    console.log("validationResult", validationResult); 
+    console.log("validationResult", validationResult);
 
     if (!validationResult.success) {
       // Combine error messages for a clearer response
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
     }
 
     // Use validated data
-    const { description, email, phone_number, name } = validationResult.data;
+    const { description, email, phone_number, name, user_id } = validationResult.data;
 
     const supabase = createAuthenticatedClient();
 
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
 
     console.log("email", email);
     console.log("phone_number", phone_number);
-    
+
 
     // Find or create client
     if (email || phone_number) {
@@ -84,26 +85,37 @@ export async function POST(request: Request) {
     if (!clientId) {
       console.error('Error creating client:');
 
-       throw new Error('Failed to obtain client ID');
+      throw new Error('Failed to obtain client ID');
     }
 
-    // Fetch all user IDs
-    const { data: users, error: userError } = await supabase
-      .from('users')
-      .select('id');
 
-    if (userError) {
-      console.error('Error fetching users:', userError);
-      throw new Error('Failed to fetch users for assignment');
+    let assignedUserId: string | null = null;
+
+    if (!user_id) {
+      // Fetch all user IDs
+      const { data: users, error: userError } = await supabase
+        .from('users')
+        .select('id');
+
+      if (userError) {
+        console.error('Error fetching users:', userError);
+        throw new Error('Failed to fetch users for assignment');
+      }
+
+      if (!users || users.length === 0) {
+        throw new Error('No users found to assign the request to');
+      }
+
+      // Select a random user ID
+      const randomUserIndex = Math.floor(Math.random() * users.length);
+      assignedUserId = users[randomUserIndex].id;
+    } else {
+      assignedUserId = user_id;
     }
 
-    if (!users || users.length === 0) {
-      throw new Error('No users found to assign the request to');
-    }
 
-    // Select a random user ID
-    const randomUserIndex = Math.floor(Math.random() * users.length);
-    const assignedUserId = users[randomUserIndex].id;
+    console.log("assignedUserId", assignedUserId);
+    
 
     // Insert purchase request
     const { data: newRequest, error: insertError } = await supabase
@@ -122,12 +134,12 @@ export async function POST(request: Request) {
       throw new Error('Failed to create purchase request');
     }
 
-    return NextResponse.json(newRequest, { status: 201 , headers: corsHeaders });
+    return NextResponse.json(newRequest, { status: 201, headers: corsHeaders });
 
   } catch (error) {
     console.error('API Error:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-    return NextResponse.json({ error: errorMessage }, { status: 500 , headers: corsHeaders });
+    return NextResponse.json({ error: errorMessage }, { status: 500, headers: corsHeaders });
   }
 }
 

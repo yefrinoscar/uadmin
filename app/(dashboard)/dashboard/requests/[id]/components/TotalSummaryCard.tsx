@@ -87,7 +87,7 @@ export const TotalSummaryCard = () => {
     // The store's exchangeRate is updated when calculations are set, so no need to set it here explicitly
     // unless there's a separate input for manual TC adjustment in this component.
 
-  }, [products, exchangeRate, setTotalGeneralUSD, setTotalGeneralPEN]);
+  }, [totalUSD, products, exchangeRate, setTotalGeneralUSD, setTotalGeneralPEN]);
 
   // Effect to reset finalPricePEN (in store) and local selectedRoundedPrice when totalGeneralPEN (from store) changes
   useEffect(() => {

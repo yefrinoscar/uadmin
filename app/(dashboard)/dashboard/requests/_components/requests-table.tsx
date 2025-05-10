@@ -1,7 +1,7 @@
 "use client";
 
 import React, { JSX } from 'react'; 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import {
   useReactTable,
   getCoreRowModel,
@@ -36,25 +36,11 @@ import {
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { PurchaseRequestList } from "@/trpc/api/routers/requests"
-import { useMutation, useSuspenseQuery } from "@tanstack/react-query"
+import { useSuspenseQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { useTRPC } from "@/trpc/client"
 import { PurchaseRequestStatus, purchaseRequestStatusLabels } from '../types';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useRequestFilters } from '../hooks/useRequestFilters';
 
 // StatusBadge component - Solid background, pill shape design
 const StatusBadge: React.FC<{ status: PurchaseRequestStatus }> = ({ status }) => {
@@ -145,44 +131,35 @@ const RequestIdCell: React.FC<RequestIdCellProps> = ({ id }) => {
 };
 
 export const RequestsTable = () => {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [assignUserDialogOpen, setAssignUserDialogOpen] = useState(false);
-  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
+  const router = useRouter();
+  const trpc = useTRPC();
+  const { filters } = useRequestFilters();
 
+  const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState({
     pageIndex: 0, 
     pageSize: 10, 
-  })
-  const router = useRouter();
-  const trpc = useTRPC();
+  });
 
-  const queryInput = {
-    page: pagination.pageIndex + 1, 
-    pageSize: pagination.pageSize,
-    status: undefined,
-    clientId: undefined,
-    text: undefined,
-  };
+  const prevFiltersRef = useRef(filters); // Ref to store previous filters
+
+  const queryInput = useMemo(() => {
+    return {
+      page: pagination.pageIndex + 1, 
+      pageSize: pagination.pageSize,
+      // sortBy: sorting[0]?.id,
+      // sortOrder: sorting[0]?.desc ? 'desc' : 'asc',
+      filters: {
+        status: filters.status, 
+        text: filters.text,     
+        clientId: filters.clientId, 
+      },
+    };
+  }, [filters, pagination]);
+
   const queryOptions = trpc.requests.getAll.queryOptions(queryInput);
-  const usersQueryOptions = trpc.requests.getUsers.queryOptions();
-
-  const { data: requestsPaginatedData, refetch } = useSuspenseQuery(queryOptions);
-  const { data: users = [] } = useSuspenseQuery(usersQueryOptions);
+  const { data: requestsPaginatedData } = useSuspenseQuery(queryOptions);
   
-  const updateAssignedUserMutation = useMutation(trpc.requests.updateAssignedUser.mutationOptions({
-    onSuccess: () => {
-      toast.success("Usuario asignado correctamente");
-      refetch();
-      setAssignUserDialogOpen(false);
-    },
-    onError: (error) => {
-      console.error("Error assigning user:", error);
-      toast.error("Error", {
-        description: "No se pudo asignar el usuario",
-      });
-    },
-  }));
-
   const data = requestsPaginatedData?.items ?? [];
   const totalCount = requestsPaginatedData?.totalCount ?? 0;
   const pageCount = Math.ceil(totalCount / pagination.pageSize);
@@ -281,7 +258,6 @@ export const RequestsTable = () => {
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Acciones</DropdownMenuLabel>
             <DropdownMenuItem onClick={() => handleViewDetails(row.original.id)}>Ver detalles</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleAssignUser(row.original.id)}>Asignar usuario</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -306,62 +282,20 @@ export const RequestsTable = () => {
   })
 
   useEffect(() => {
-    table.setPageIndex(0);
-    // Data will refetch automatically because queryInput to useSuspenseQuery changes
-  }, [table]); 
+    // Compare current filters with previous. If changed, reset pageIndex in pagination state.
+    if (JSON.stringify(filters) !== JSON.stringify(prevFiltersRef.current)) {
+      setPagination(prev => ({ ...prev, pageIndex: 0 }));
+    }
+    // Update ref to current filters for next comparison
+    prevFiltersRef.current = filters;
+  }, [filters]); 
 
   function handleViewDetails(id: string) {
     router.push(`/dashboard/requests/${id}`);
   }
 
-  function handleAssignUser(id: string) {
-    setSelectedRequestId(id);
-    setAssignUserDialogOpen(true);
-  }
-
-  function handleAssignUserSubmit(userId: string | null) {
-    if (selectedRequestId) {
-      updateAssignedUserMutation.mutate({
-        requestId: selectedRequestId,
-        userId: userId
-      });
-    }
-  }
-
   return (
     <div className="space-y-4">
-      <Dialog open={assignUserDialogOpen} onOpenChange={setAssignUserDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Asignar Usuario</DialogTitle>
-            <DialogDescription>
-              Selecciona un usuario para asignar a esta solicitud.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Select onValueChange={(value) => handleAssignUserSubmit(value || null)}>
-                <SelectTrigger className="w-full col-span-4">
-                  <SelectValue placeholder="Seleccionar usuario" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Sin asignar</SelectItem>
-                  {users.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAssignUserDialogOpen(false)}>
-              Cancelar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       <div className="rounded-md border">
         <Table>
           <TableHeader>

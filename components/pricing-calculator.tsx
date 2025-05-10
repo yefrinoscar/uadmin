@@ -52,7 +52,7 @@ export function PricingCalculator({
     if (pricing.marginPEN !== marginPEN) {
       setMarginPEN(pricing.marginPEN)
     }
-  }, [pricing.marginPEN])
+  }, [pricing.marginPEN, marginPEN])
 
   // Send only shippingCosts and totalUSD to parent components
   useEffect(() => {
