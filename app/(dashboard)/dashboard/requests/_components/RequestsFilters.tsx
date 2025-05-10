@@ -22,22 +22,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
+import { useRequestFilters } from "../hooks/useRequestFilters";
 
-// Debounce hook
-const useDebounce = <T,>(value: T, delay: number): T => {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
-  return debouncedValue;
-};
-
-export type RequestStatusFilter = 'all' | PurchaseRequestStatus;
+export type RequestStatusFilter = '' | PurchaseRequestStatus;
 
 export interface RequestFiltersState {
   text?: string;
@@ -69,7 +56,7 @@ function StatusComboBox({
 
   // Create status options array
   const statusOptions: StatusOption[] = [
-    { value: "all", label: "Todos los Estados" },
+    { value: "", label: "Todos los Estados" },
     ...purchaseRequestStatuses.map((status) => ({
       value: status,
       label: purchaseRequestStatusLabels[status],
@@ -170,16 +157,27 @@ function ClientComboBox({
 
 export function RequestsFilters() {
   const trpc = useTRPC();
-  const [filters, setFiltersInternal] = useState<RequestFiltersState>({
-    status: 'all', // Default status filter
-    text: undefined,
-    clientId: undefined,
-  });
-  const [textSearch, setTextSearch] = useState(filters?.text || "");
-  const [statusFilter, setStatusFilter] = useState<RequestStatusFilter>(filters?.status || "all");
-  const [selectedClientId, setSelectedClientId] = useState<string | undefined>(filters?.clientId || "all");
+  const { filters, setFilters, resetFilters, hasFilters } = useRequestFilters();
 
-  const debouncedTextSearch = useDebounce(textSearch, 500);
+  // Local state for the text input field
+  const [inputText, setInputText] = useState<string>(filters.text || "");
+
+  // useEffect to debounce calls to setFilters for text search
+  useEffect(() => {
+    const timerId = setTimeout(() => {
+      // Only update if the debounced text is different from the current URL filter text
+      if (inputText !== (filters.text || "")) {
+        setFilters({ text: inputText || null }); // Send null if inputText is empty
+      }
+    }, 500); // 500ms debounce delay
+
+    return () => clearTimeout(timerId);
+  }, [inputText, filters.text, setFilters]);
+
+  // useEffect to synchronize inputText if filters.text changes externally (e.g., URL, reset)
+  useEffect(() => {
+    setInputText(filters.text || "");
+  }, [filters.text]);
 
   // Fetch clients for filter dropdown
   const clientFilterOptions = trpc.requests.getClientsForFilter.queryOptions(undefined);
@@ -193,32 +191,6 @@ export function RequestsFilters() {
       label: client.name || "Nombre no disponible",
     })),
   ];
-  
-  // Check if any filters are active
-  const hasActiveFilters = React.useMemo(() => {
-    return (
-      textSearch.trim() !== "" || 
-      statusFilter !== "all" || 
-      (selectedClientId !== "all" && selectedClientId !== undefined)
-    );
-  }, [textSearch, statusFilter, selectedClientId]);
-
-  useEffect(() => {
-    const newFilters = {
-      text: debouncedTextSearch || undefined,
-      status: statusFilter,
-      clientId: selectedClientId === "all" ? undefined : selectedClientId,
-    };
-    setFiltersInternal(newFilters);
-  }, [debouncedTextSearch, statusFilter, selectedClientId]);
-
-  const handleClearFilters = () => {
-    setTextSearch("");
-    setStatusFilter("all");
-    setSelectedClientId("all");
-    const clearedFilters = { text: undefined, status: "all" as RequestStatusFilter, clientId: undefined };
-    setFiltersInternal(clearedFilters);
-  };
 
   return (
     <div className="flex flex-wrap gap-4 justify-between items-center">
@@ -227,27 +199,27 @@ export function RequestsFilters() {
           <Input
             id="textSearch"
             placeholder="Buscar pedidos..."
-            value={textSearch}
-            onChange={(e) => setTextSearch(e.target.value)}
+            value={inputText} // Controlled by local state for immediate feedback
+            onChange={(e) => setInputText(e.target.value)} // Update local state on change
             className="h-9 w-[180px] md:w-[200px]"
           />
         </div>
 
         <ClientComboBox
-          value={selectedClientId || "all"}
-          onChange={(value) => setSelectedClientId(value)}
+          value={filters?.clientId || "all"}
+          onChange={(value) => setFilters({ clientId: value === "all" ? null : value })}
           options={clientOptions}
           isLoading={isLoadingClients}
         />
 
         <StatusComboBox
-          value={statusFilter}
-          onChange={(value) => setStatusFilter(value)}
+          value={filters?.status || ""}
+          onChange={(value) => setFilters({ status: value === "" ? null : (value as PurchaseRequestStatus) })}
         />
 
-        {hasActiveFilters && (
+        {hasFilters && (
           <div className="flex items-center">
-            <Button variant="outline" onClick={handleClearFilters} className="h-9">
+            <Button variant="outline" onClick={resetFilters} className="h-9">
               <XIcon className="mr-2 h-4 w-4" />
               Limpiar Filtros
             </Button>

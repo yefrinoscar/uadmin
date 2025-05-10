@@ -11,12 +11,18 @@ const openai = new OpenAI({
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.FROM_EMAIL || 'no-reply@dashboard.underla.lat';
 
+const FiltersSchema = z.object({
+  status: z.enum(["pending", "in_progress", "in_transit", "completed", "cancelled", "delivered"]).nullable(),
+  clientId: z.string().nullable(),
+  text: z.string().nullable()
+});
+
 const PaginationInputSchema = z.object({
   page: z.number().min(1).default(1),
   pageSize: z.number().min(1).max(100).default(10),
-  status: z.enum(["pending", "in_progress", "in_transit", "completed", "cancelled", "delivered"]).optional(),
-  clientId: z.string().optional(),
+  filters: FiltersSchema.optional()
 });
+
 
 const ClientSchema = z.object({
   email: z.string().email().nullable(),
@@ -88,6 +94,7 @@ const CreateRequestSchema = z.object({
   email: z.string().email().optional(),
   phone_number: z.string().optional(),
   name: z.string().optional(),
+  user_id: z.string().optional(),
 }).refine((data) => {
   // At least phone or name must be provided
   return data.phone_number || data.email;
@@ -104,6 +111,9 @@ function formatEmailContent(content: string): string {
 export type PurchaseRequest = z.infer<typeof PurchaseRequestSchema>
 export type PurchaseRequestList = Omit<PurchaseRequest, 'products'>
 
+export type RequestFilter = z.infer<typeof FiltersSchema>
+
+
 export type Client = z.infer<typeof ClientSchema>
 export type Product = z.infer<typeof ProductSchema>
 
@@ -115,8 +125,9 @@ export const requestsRouter = router({
       totalCount: z.number(),
     }))
     .query(async ({ ctx, input }) => {
-      const { page, pageSize, status, clientId } = input;
-      const offset = (page - 1) * pageSize;
+      const { page, pageSize, filters } = input;
+      const { status, clientId, text } = filters || {};
+      const offset = (page - 1) * pageSize
 
       let query = ctx.supabase
         .from("purchase_requests")
@@ -137,6 +148,8 @@ export const requestsRouter = router({
         .order("created_at", { ascending: false })
         .range(offset, offset + pageSize - 1);
 
+      console.log('status', status);
+
       if (status) {
         query = query.eq('status', status);
       }
@@ -144,6 +157,11 @@ export const requestsRouter = router({
       if (clientId) {
         query = query.eq('client_id', clientId);
       }
+
+      if (text) {
+        query = query.or(`description.ilike.%${text}%`);
+      }
+
 
       const { data, error, count } = await query;
 
@@ -167,7 +185,7 @@ export const requestsRouter = router({
         } else if (item.assigned_user) {
           assignedUserData = item.assigned_user;
         }
-        
+
         return {
           ...item,
           client: clientData ? {
@@ -179,7 +197,7 @@ export const requestsRouter = router({
             id: assignedUserData.id,
             name: assignedUserData.name ?? null,
           } : null,
-          created_at: item.created_at, 
+          created_at: item.created_at,
           updated_at: item.updated_at,
           price: item.price,
           response: item.response,
@@ -264,10 +282,11 @@ export const requestsRouter = router({
       console.log("formattedData", formattedData);
 
       const validationResult = PurchaseRequestSchema.safeParse(formattedData);
-    if (!validationResult.success) {
-      // Combine error messages for a clearer response
-      const errorMessages = validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
-console.log("errorMessages", errorMessages);    }
+      if (!validationResult.success) {
+        // Combine error messages for a clearer response
+        const errorMessages = validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+        console.log("errorMessages", errorMessages);
+      }
 
       console.log("validationResult", validationResult);
 
@@ -335,7 +354,7 @@ console.log("errorMessages", errorMessages);    }
       }
       return { success: true };
     }),
-    
+
   getUsers: protectedProcedure
     .query(async ({ ctx }) => {
       const { data, error } = await ctx.supabase
@@ -350,11 +369,11 @@ console.log("errorMessages", errorMessages);    }
 
       return data;
     }),
-    
+
   updateAssignedUser: protectedProcedure
-    .input(z.object({ 
-      requestId: z.string(), 
-      userId: z.string().nullable() 
+    .input(z.object({
+      requestId: z.string(),
+      userId: z.string().nullable()
     }))
     .mutation(async ({ ctx, input }) => {
       const { error } = await ctx.supabase
@@ -388,7 +407,7 @@ console.log("errorMessages", errorMessages);    }
                     Make sure to tell client 50% is for advance payment and 50% is for delivery. tel client is just for release of store only this promotion of 50/50, make sure to write it in uppercase and exclamations.
                     Tell client that they can pay with bank transfer or credit card with a fee of 5% of the total price.
                     `;
-      
+
       try {
         const completion = await openai.chat.completions.create({
           model: "gpt-4o-mini",
@@ -397,20 +416,20 @@ console.log("errorMessages", errorMessages);    }
         });
 
         const email = completion.choices[0].message?.content?.trim();
-        
+
         if (!email) {
-          throw new TRPCError({ 
-            code: 'INTERNAL_SERVER_ERROR', 
-            message: 'Failed to generate email content' 
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to generate email content'
           });
         }
-        
+
         return { email };
       } catch (error) {
         console.error("OpenAI API error:", error);
-        throw new TRPCError({ 
-          code: 'INTERNAL_SERVER_ERROR', 
-          message: 'Failed to generate email' 
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to generate email'
         });
       }
     }),
@@ -425,9 +444,9 @@ console.log("errorMessages", errorMessages);    }
     .mutation(async ({ ctx, input }) => {
       try {
         if (!input.email || !input.subject || !input.content) {
-          throw new TRPCError({ 
-            code: 'BAD_REQUEST', 
-            message: 'Missing required fields' 
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Missing required fields'
           });
         }
 
@@ -441,9 +460,9 @@ console.log("errorMessages", errorMessages);    }
         });
 
         if (error) {
-          throw new TRPCError({ 
-            code: 'INTERNAL_SERVER_ERROR', 
-            message: `Resend API error: ${error.message}` 
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `Resend API error: ${error.message}`
           });
         }
 
@@ -458,18 +477,18 @@ console.log("errorMessages", errorMessages);    }
 
         if (updateError) {
           console.error("Error updating email sent status:", updateError);
-          throw new TRPCError({ 
-            code: 'INTERNAL_SERVER_ERROR', 
-            message: 'Failed to update email sent status' 
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to update email sent status'
           });
         }
 
         return { success: true, data };
       } catch (error) {
         console.error('Error sending email:', error);
-        throw new TRPCError({ 
-          code: 'INTERNAL_SERVER_ERROR', 
-          message: error instanceof Error ? error.message : 'Failed to send email' 
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to send email'
         });
       }
     }),
@@ -483,56 +502,56 @@ console.log("errorMessages", errorMessages);    }
     .mutation(async ({ ctx, input }) => {
       try {
         const { id, price, response } = input;
-        
+
         // First, let's check if the request exists
         const { data: existingRequest, error: findError } = await ctx.supabase
           .from("purchase_requests")
           .select("id")
           .eq("id", id)
           .single();
-  
+
         if (findError) {
           console.error("Error finding purchase request:", findError);
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Purchase request not found' });
         }
-        
+
         // Update the request with price and response
         const updateData: any = {
           updated_at: new Date().toISOString()
         };
-        
+
         if (price !== undefined) {
           updateData.price = price;
         }
-        
+
         if (response !== undefined) {
           updateData.response = response;
         }
-        
+
         const { error: updateError } = await ctx.supabase
           .from("purchase_requests")
           .update(updateData)
           .eq("id", id);
-        
+
         if (updateError) {
           console.error("Error updating request:", updateError);
-          throw new TRPCError({ 
-            code: 'INTERNAL_SERVER_ERROR', 
-            message: 'Failed to update request' 
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to update request'
           });
         }
-        
-        return { 
+
+        return {
           success: true
         };
       } catch (error) {
         console.error("Error in updateRequest:", error);
-        throw error instanceof TRPCError 
-          ? error 
-          : new TRPCError({ 
-              code: 'INTERNAL_SERVER_ERROR', 
-              message: 'An unexpected error occurred'
-            });
+        throw error instanceof TRPCError
+          ? error
+          : new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'An unexpected error occurred'
+          });
       }
     }),
 
@@ -545,14 +564,14 @@ console.log("errorMessages", errorMessages);    }
       try {
         const { requestId, product } = input;
         let newProduct = false;
-        
+
         // First, check if the request exists
         const { data: existingRequest, error: findError } = await ctx.supabase
           .from("purchase_requests")
           .select("id")
           .eq("id", requestId)
           .single();
-  
+
         if (findError) {
           console.error("Error finding purchase request:", findError);
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Purchase request not found' });
@@ -560,25 +579,25 @@ console.log("errorMessages", errorMessages);    }
 
         // Process and upload product image if it's a data URL
         let processedProduct = { ...product };
-        
+
         if (product.imageData && product.imageData.startsWith('data:image')) {
           // Extract the base64 data
           const base64Data = product.imageData.split(',')[1];
           if (!base64Data) {
-            throw new TRPCError({ 
-              code: 'BAD_REQUEST', 
-              message: 'Invalid image data format' 
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Invalid image data format'
             });
           }
 
           // Convert base64 to a Buffer
           const buffer = Buffer.from(base64Data, 'base64');
-          
+
           // Create a unique filename
           const fileExt = product.imageData.split(';')[0].split('/')[1] || 'jpg';
           const fileName = `${product.id}.${fileExt}`;
           const filePath = `products/${fileName}`;
-          
+
           // Upload to Supabase Storage
           const { data: uploadData, error: uploadError } = await ctx.supabase.storage
             .from('images')
@@ -586,27 +605,27 @@ console.log("errorMessages", errorMessages);    }
               contentType: product.imageData.split(';')[0].split(':')[1] || 'image/jpeg',
               upsert: true
             });
-          
+
           if (uploadError) {
             console.error("Error uploading image:", uploadError);
-            throw new TRPCError({ 
-              code: 'INTERNAL_SERVER_ERROR', 
-              message: 'Failed to upload product image' 
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'Failed to upload product image'
             });
           }
-          
+
           // Get public URL
           const { data: publicUrlData } = ctx.supabase.storage
             .from('images')
             .getPublicUrl(filePath);
-          
+
           // Update the product with the public URL
           processedProduct = {
             ...product,
             image_url: publicUrlData.publicUrl
           };
         }
-        
+
         // Check if the product exists
         const { data: existingProduct, error: findProductError } = await ctx.supabase
           .from("request_products")
@@ -614,15 +633,15 @@ console.log("errorMessages", errorMessages);    }
           .eq("request_id", requestId)
           .eq("id", product.id)
           .single();
-        
+
         if (findProductError && findProductError.code !== 'PGRST116') { // Not found is OK
           console.error("Error checking for existing product:", findProductError);
-          throw new TRPCError({ 
-            code: 'INTERNAL_SERVER_ERROR', 
-            message: 'Failed to check for existing product' 
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to check for existing product'
           });
         }
-        
+
         if (existingProduct) {
           // Update existing product
           const { error: updateError } = await ctx.supabase
@@ -640,12 +659,12 @@ console.log("errorMessages", errorMessages);    }
             })
             .eq("request_id", requestId)
             .eq("id", product.id);
-            
+
           if (updateError) {
             console.error("Error updating product:", updateError);
-            throw new TRPCError({ 
-              code: 'INTERNAL_SERVER_ERROR', 
-              message: 'Failed to update product' 
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'Failed to update product'
             });
           }
         } else {
@@ -666,32 +685,32 @@ console.log("errorMessages", errorMessages);    }
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
             });
-            
+
           if (insertError) {
             console.error("Error inserting product:", insertError);
-            throw new TRPCError({ 
-              code: 'INTERNAL_SERVER_ERROR', 
-              message: 'Failed to insert product' 
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'Failed to insert product'
             });
           }
         }
-        
-        return { 
-          success: true, 
+
+        return {
+          success: true,
           product: processedProduct,
           newProduct
         };
       } catch (error) {
         console.error("Error in updateSingleProduct:", error);
-        throw error instanceof TRPCError 
-          ? error 
-          : new TRPCError({ 
-              code: 'INTERNAL_SERVER_ERROR', 
-              message: 'An unexpected error occurred'
-            });
+        throw error instanceof TRPCError
+          ? error
+          : new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'An unexpected error occurred'
+          });
       }
     }),
-    
+
   deleteSingleProduct: protectedProcedure
     .input(z.object({
       requestId: z.string(),
@@ -701,47 +720,47 @@ console.log("errorMessages", errorMessages);    }
     .mutation(async ({ ctx, input }) => {
       try {
         const { requestId, id, image_url } = input;
-    
+
         // If product has an image, delete it from storage
-        if (image_url) {          
+        if (image_url) {
           const fileName = image_url.split('/').pop();
 
           if (fileName) {
             const { data, error: storageError } = await ctx.supabase.storage
               .from('images')
               .remove([`products/${fileName}`]);
-              
+
             if (storageError) {
               console.error("Error deleting image:", storageError);
               // Continue with product deletion even if image deletion fails
             }
           }
         }
-        
+
         // Delete the product record
         const { data, error: deleteError } = await ctx.supabase
           .from("request_products")
           .delete()
           .eq("request_id", requestId)
-          .eq("id", id);          
-          
+          .eq("id", id);
+
         if (deleteError) {
           console.error("Error deleting product:", deleteError);
-          throw new TRPCError({ 
-            code: 'INTERNAL_SERVER_ERROR', 
-            message: 'Failed to delete product' 
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to delete product'
           });
         }
-        
+
         return { success: true };
       } catch (error) {
         console.error("Error in deleteSingleProduct:", error);
-        throw error instanceof TRPCError 
-          ? error 
-          : new TRPCError({ 
-              code: 'INTERNAL_SERVER_ERROR', 
-              message: 'An unexpected error occurred'
-            });
+        throw error instanceof TRPCError
+          ? error
+          : new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'An unexpected error occurred'
+          });
       }
     }),
 
@@ -760,9 +779,9 @@ console.log("errorMessages", errorMessages);    }
 
         if (!response.ok) {
           const error = await response.json();
-          throw new TRPCError({ 
-            code: 'BAD_REQUEST', 
-            message: error.message || 'Failed to create request' 
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: error.message || 'Failed to create request'
           });
         }
 
@@ -770,12 +789,12 @@ console.log("errorMessages", errorMessages);    }
         return data;
       } catch (error) {
         console.error("Error in create request:", error);
-        throw error instanceof TRPCError 
-          ? error 
-          : new TRPCError({ 
-              code: 'INTERNAL_SERVER_ERROR', 
-              message: 'Failed to create request' 
-            });
+        throw error instanceof TRPCError
+          ? error
+          : new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to create request'
+          });
       }
     }),
 });

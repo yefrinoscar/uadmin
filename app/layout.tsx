@@ -5,6 +5,7 @@ import { Manrope } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner"
 import { TRPCReactProvider } from "@/trpc/client";
+import { NuqsAdapter } from "nuqs/adapters/next/app";
 
 const open_sans = Manrope({
   variable: "--font-open-sans",
@@ -22,28 +23,30 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
-      <html lang="en" suppressHydrationWarning>
-        <head>
-          {/* <script
+    <NuqsAdapter>
+      <ClerkProvider>
+        <html lang="en" suppressHydrationWarning>
+          <head>
+            {/* <script
             crossOrigin="anonymous"
             src="//unpkg.com/react-scan/dist/auto.global.js"
           /> */}
-        </head>
-        <body className={`${open_sans.variable} font-sans`}>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="dark"
-            enableSystem
-            disableTransitionOnChange
-          >
-            <TRPCReactProvider>
-              {children}
-              <Toaster position="top-right" />
-            </TRPCReactProvider>
-          </ThemeProvider>
-        </body>
-      </html>
-    </ClerkProvider>
+          </head>
+          <body className={`${open_sans.variable} font-sans`}>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="dark"
+              enableSystem
+              disableTransitionOnChange
+            >
+              <TRPCReactProvider>
+                {children}
+                <Toaster position="top-right" />
+              </TRPCReactProvider>
+            </ThemeProvider>
+          </body>
+        </html>
+      </ClerkProvider>
+    </NuqsAdapter>
   );
 }
