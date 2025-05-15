@@ -14,8 +14,8 @@ import { useRequestDetailStore } from "@/store/requestDetailStore"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { BackButton } from "@/components/back"
 import { PurchaseRequestStatus } from "../../types"
-import { RequestDetailDrawer } from "./RequestDetailDrawer"
 import { StatusWorkflow } from "./StatusWorkflow";
+import { RequestPreviewDrawer } from "./RequestPreviewDrawer";
 
 interface RequestDetailClientPageProps {
   id: string
@@ -27,42 +27,45 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
   // Get state and actions from Zustand store
   const {
     request,
-    response,
-    isSendingEmail,
-    emailSent,
-    products,
+    finalPriceUSD,
+    totalGeneralUSD,
+    getFinalPricePEN,
+    getTotalGeneralPEN,
 
     setRequest,
-    setResponse,
-    setIsSendingEmail,
-    setEmailSent,
     setProducts
   } = useRequestDetailStore();
 
-  const [basePrice] = useState<number>(0)
+  // Local state for UI and editing
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [responseText] = useState('');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // tRPC queries and mutations
   const requestQueryOptions = trpc.requests.getById.queryOptions({ id });
   const { data: requestData, refetch } = useSuspenseQuery(requestQueryOptions);
 
-  const updateRequestMutationOptions = trpc.requests.updateRequest.mutationOptions({
-    onSuccess: () => {
-      toast.success("Respuesta actualizada");
-      refetch(); // Refetch the data after mutation
-      setIsSaving(false);
-    },
-    onError: (error) => {
-      console.error("Error updating request:", error);
-      toast.error("Error", {
-        description: "No se pudo actualizar la respuesta",
-      });
-      setIsSaving(false);
-    },
-  });
+  const updateRequestMutation = useMutation(
+    trpc.requests.updateRequest.mutationOptions({
+      onSuccess: () => {
+        toast.success("Cotización y precios guardados correctamente");
+        refetch(); // Refetch the data after mutation
+        setIsSaving(false);
+      },
+      onError: (error) => {
+        console.error("Error updating request:", error);
+        toast.error("Error", {
+          description: "No se pudo actualizar la respuesta y los precios",
+        });
+        setIsSaving(false);
+      },
+    })
+  );
 
-  const updateRequestMutation = useMutation(updateRequestMutationOptions);
-
-  const updateStatusMutationOptions = trpc.requests.updateStatus.mutationOptions({
+  const updateStatusMutation = useMutation(
+    trpc.requests.updateStatus.mutationOptions({
     onSuccess: () => {
       toast.success("Estado actualizado correctamente");
       refetch(); // Refetch the data after mutation
@@ -75,53 +78,100 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
       });
       setIsUpdatingStatus(false);
     },
-  });
+  }));
 
-  const updateStatusMutation = useMutation(updateStatusMutationOptions);
+  const sendEmailMutation = useMutation(
+    trpc.requests.sendEmail.mutationOptions({
+      onSuccess: () => {
+        toast.success("Email enviado correctamente");
+        refetch(); // Refetch data to update request.email_sent status
+        setIsSendingEmail(false);
+      },
+      onError: (error) => {
+        toast.error("Error al enviar el email");
+        console.error("Error sending email:", error);
+        setIsSendingEmail(false);
+      }
+    })
+  );
 
-  const [isSaving, setIsSaving] = useState(false);
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
-  const sendEmailMutationOptions = trpc.requests.sendEmail.mutationOptions({
-    onSuccess: () => {
-      toast.success("Email enviado correctamente");
-      setEmailSent(true);
-      handleSaveResponse();
-    },
-    onError: (error) => {
-      toast.error("Error al enviar el email");
-      console.error("Error sending email:", error);
-    },
-    onSettled: () => {
-      setIsSendingEmail(false);
+  // Effect to determine if there are unsaved changes
+  useEffect(() => {
+    if (!request) { // If request is not yet loaded from DB
+      setHasUnsavedChanges(false);
+      return;
     }
-  });
 
-  const sendEmailMutation = useMutation(sendEmailMutationOptions);
+    const totalPriceInRequest = typeof request.price === 'number' ? request.price : 0;
+    const finalPriceInRequest = typeof request.final_price === 'number' ? request.final_price : 0;
+    const epsilon = 0.001;
+    const totalPriceChanged = Math.abs(totalGeneralUSD - totalPriceInRequest) > epsilon;
+    const finalPriceChanged = Math.abs(finalPriceUSD - finalPriceInRequest) > epsilon;
+    
+    const newHasUnsavedChanges = totalPriceChanged || finalPriceChanged;
+
+    // Detailed log for debugging what changed
+    // if (newHasUnsavedChanges) {
+    //   let changedFields = [];
+
+    //   if (totalPriceChanged) {
+    //     changedFields.push(`Total Price (USD): (DB: ${totalPriceInRequest}, Store: ${totalGeneralUSD}, Diff: ${totalGeneralUSD - totalPriceInRequest})`);
+    //   }
+    //   if (finalPriceChanged) {
+    //     changedFields.push(`Final Price (USD): (DB: ${finalPriceInRequest}, Store: ${finalPriceUSD}, Diff: ${finalPriceUSD - finalPriceInRequest})`);
+    //   }
+
+    //   console.log('[DEBUG] Unsaved Changes Detected. Fields changed:', changedFields.join('; '));
+    // } else if (hasUnsavedChanges && !newHasUnsavedChanges) {
+    //   console.log('[DEBUG] Changes have been saved or reverted.');
+    // }
+    
+    setHasUnsavedChanges(newHasUnsavedChanges);
+
+  }, [responseText, totalGeneralUSD, finalPriceUSD, request, hasUnsavedChanges]);
 
   useEffect(() => {
     if (requestData) {
       setRequest(requestData);
-      setResponse(requestData.response || "");
-      setEmailSent(requestData.email_sent || false);
 
       if (requestData.products && requestData.products.length > 0) {
         setProducts(requestData.products);
       } else {
         setProducts([]);
       }
+
+      const requestWithPrices = requestData;
+      
+      if (requestWithPrices.final_price !== undefined && requestWithPrices.final_price !== null) {
+        useRequestDetailStore.getState().setFinalPriceUSD(requestWithPrices.final_price);
+      } else {
+        useRequestDetailStore.getState().setFinalPriceUSD(0); // Explicitly set to 0 if null/undefined from DB
+      }
+      
+      // Assuming DB field for totalGeneralUSD is 'price'
+      if (requestWithPrices.price !== undefined && requestWithPrices.price !== null) {
+        useRequestDetailStore.getState().setTotalGeneralUSD(requestWithPrices.price);
+      } else {
+        useRequestDetailStore.getState().setTotalGeneralUSD(0); // Explicitly set to 0 if null/undefined from DB
+      }
     }
-  }, [requestData, setRequest, setResponse, setEmailSent, setProducts]);
+  }, [requestData, setRequest, setProducts]);
 
 
   const handleSaveResponse = async () => {
     setIsSaving(true);
 
+    console.log('totalGeneralUSD', totalGeneralUSD);
+    console.log('finalPriceUSD', finalPriceUSD);
+    console.log('calculated PEN: total=', getTotalGeneralPEN(), 'final=', getFinalPricePEN());
+
     try {
       await updateRequestMutation.mutateAsync({
         id,
-        response,
-        price: basePrice
+        response: responseText,
+        price: totalGeneralUSD, // Save in USD
+        finalPrice: finalPriceUSD // Save in USD
       });
     } catch {
       setIsSaving(false);
@@ -129,7 +179,7 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
   };
 
   const handleSendEmail = async () => {
-    if (!request?.client?.email || !response.trim()) {
+    if (!request?.client?.email || !responseText.trim()) {
       toast.warning("No hay respuesta para enviar");
       return;
     }
@@ -138,8 +188,9 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
     try {
       await updateRequestMutation.mutateAsync({
         id,
-        response,
-        price: basePrice
+        response: responseText,
+        price: totalGeneralUSD, // Save in USD 
+        finalPrice: finalPriceUSD // Save in USD
       });
 
       // Then send the email
@@ -147,7 +198,7 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
         id,
         email: request.client.email,
         subject: 'Respuesta a tu solicitud de cotización',
-        content: response
+        content: responseText
       });
     } catch {
       // Error handling is in the mutation options
@@ -171,6 +222,30 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
     }
   };
 
+  const emailSent = request?.email_sent || false;
+
+  // Effect to warn user if they try to leave with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        event.preventDefault();
+        // Standard for most browsers to show a confirmation dialog
+        event.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+      }
+    };
+
+    if (hasUnsavedChanges) {
+      window.addEventListener('beforeunload', handleBeforeUnload);
+    } else {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    }
+
+    // Cleanup listener on component unmount
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges]);
+
   return (
     <div className="space-y-6">
 
@@ -188,8 +263,8 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
-                  disabled={!response.trim() || isSendingEmail}
-                  className={`transition-all ${!response.trim() ? "opacity-50 cursor-not-allowed" : "hover:bg-primary hover:text-primary-foreground"}`}
+                  disabled={!responseText.trim() || isSendingEmail}
+                  className={`transition-all ${!responseText.trim() ? "opacity-50 cursor-not-allowed" : "hover:bg-primary hover:text-primary-foreground"}`}
                 >
                   <Send className="h-4 w-4 mr-2" />
                   Enviar
@@ -219,12 +294,13 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-
-            {requestData && <RequestDetailDrawer request={requestData} products={products} />}
+            
+            {/* Preview Drawer Component */}
+            <RequestPreviewDrawer />
             
             <Button
               onClick={handleSaveResponse}
-              disabled={isSaving}
+              disabled={!hasUnsavedChanges || isSaving}
               className="gap-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-medium border-0"
             >
               {isSaving ? (
@@ -250,9 +326,9 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
         />
       )}
       
-      {requestData && <RequestDetailsCard request={requestData} />}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 space-y-6">
+          {requestData && <RequestDetailsCard request={requestData} />}
           <ProductList requestId={id} initialProducts={requestData?.products} />
         </div>
         <div className="lg:col-span-1 space-y-6">
@@ -260,10 +336,13 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
         </div>
         {/* <div className="lg:col-span-1">
           <ResponseSection
-            response={response}
-            calculations={calculations}
+            responseText={responseText}
+            calculations={{
+              totalUSD: totalGeneralUSD,
+              totalPEN: getTotalGeneralPEN()
+            }}
             client={request?.client}
-            onChangeResponse={setResponse}
+            onChangeResponse={setResponseText}
           />
         </div> */}
       </div>

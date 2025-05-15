@@ -28,15 +28,12 @@ export const TotalSummaryCard = () => {
   const {
     products,
     exchangeRate,
-    totalGeneralPEN,
-    totalGeneralUSD,
-    finalPricePEN,
-    finalPriceDisplayCurrency,
+    finalPriceDisplayCurrency: displayCurrencyForFinalPrice,
 
-    setTotalGeneralPEN,
-    setTotalGeneralUSD,
-    setFinalPricePEN,
-    setFinalPriceDisplayCurrency,
+    setFinalPriceUSD: setCurrentFinalPriceUSDInStore,
+    setTotalGeneralUSD: setTotalGeneralUSDInStore,
+    setFinalPriceDisplayCurrency: setDisplayCurrencyForFinalPriceInStore,
+    setProfit
   } = useRequestDetailStore();
 
   // Use our custom hook for all pricing calculations
@@ -48,152 +45,156 @@ export const TotalSummaryCard = () => {
   })
 
   // Extract just what we need for the parent component
-  const { totalUSD, totalCosts: shippingCostsUSD } = pricing
-  const shippingCostsPEN = shippingCostsUSD * (exchangeRate || 3.7)
+  const { totalCosts: shippingCostsUSD } = pricing
 
-
-  // Local state for UI elements and derived values not in global store
-  const [subtotalUSD, setSubtotalUSD] = useState(0);
-  const [subtotalPEN, setSubtotalPEN] = useState(0);
-  const [, setSubtotalBaseUSD] = useState(0);
-
-  const [profitAmountUSD, setProfitAmountUSD] = useState(0);
-  const [profitAmountPEN, setProfitAmountPEN] = useState(0);
+  const [totalGeneralPEN, setLocalTotalGeneralPEN] = useState(0);
+  const [totalGeneralUSD, setLocalTotalGeneralUSD] = useState(0);
+  const [currentFinalPricePEN, setLocalCurrentFinalPricePEN] = useState(0);
+  const [currentFinalPriceUSD, setLocalCurrentFinalPriceUSD] = useState(0);
 
   const [enableRounding] = useState(true);
   const [suggestedPrices, setSuggestedPrices] = useState<{ value: number; label: string }[]>([]);
   const [selectedRoundedPrice, setSelectedRoundedPrice] = useState<number | null>(null);
   const [adjustmentPercentage, setAdjustmentPercentage] = useState(0);
 
-  // Effect to calculate and set base totals (USD and PEN) into the store
-  useEffect(() => {
-    const profitUSD = products.reduce((sum, p) => sum + (p.profit_amount || 0), 0);
-    const subtotalUSD = products.reduce((sum, p) => sum + (p.price || 0), 0);
-    const subtotalBaseUSD = products.reduce((sum, p) => sum + (p.base_price || 0), 0);
-    const calculatedTotalUSD = totalUSD + profitUSD;
-
-    setSubtotalUSD(subtotalUSD);
-    setSubtotalBaseUSD(subtotalBaseUSD);
-    setProfitAmountUSD(profitUSD);
-    setTotalGeneralUSD(calculatedTotalUSD); // Update global store
-
-    // Use exchangeRate from store for PEN calculations
-    const currentExchangeRate = exchangeRate || 3.7; // Fallback if store's rate is 0 or undefined initially
-    setSubtotalPEN(totalUSD * currentExchangeRate);
-    setProfitAmountPEN(profitUSD * currentExchangeRate);
-    const calculatedTotalGeneralPEN = calculatedTotalUSD * currentExchangeRate;
-    setTotalGeneralPEN(calculatedTotalGeneralPEN); // Update global store
-
-    // The store's exchangeRate is updated when calculations are set, so no need to set it here explicitly
-    // unless there's a separate input for manual TC adjustment in this component.
-
-  }, [totalUSD, products, exchangeRate, setTotalGeneralUSD, setTotalGeneralPEN]);
-
-  // Effect to reset finalPricePEN (in store) and local selectedRoundedPrice when totalGeneralPEN (from store) changes
-  useEffect(() => {
-    setFinalPricePEN(totalGeneralPEN);
-    setSelectedRoundedPrice(null);
-  }, [totalGeneralPEN, setFinalPricePEN]);
-
   // Generate Price Suggestions when totals (from store) or display currency (from store) change
   useEffect(() => {
     let basePriceForSuggestions = 0;
-    if (finalPriceDisplayCurrency === "PEN") {
+    if (displayCurrencyForFinalPrice === "PEN") {
       basePriceForSuggestions = totalGeneralPEN;
     } else { // USD
       basePriceForSuggestions = totalGeneralUSD;
     }
 
     if (basePriceForSuggestions > 0) {
-      const suggestions = generateAttractivePrices(basePriceForSuggestions, finalPriceDisplayCurrency);
+      const suggestions = generateAttractivePrices(basePriceForSuggestions, displayCurrencyForFinalPrice);
       setSuggestedPrices(suggestions);
     } else {
       setSuggestedPrices([]);
     }
     setSelectedRoundedPrice(null);
-  }, [totalGeneralPEN, totalGeneralUSD, finalPriceDisplayCurrency]);
+  }, [totalGeneralPEN, totalGeneralUSD, displayCurrencyForFinalPrice]);
 
-  // Calculate local adjustmentPercentage whenever finalPricePEN (from store) or totalGeneralPEN (from store) changes
+  // Calculate local adjustmentPercentage whenever currentFinalPricePEN or totalGeneralPEN changes
   useEffect(() => {
-    if (totalGeneralPEN > 0 && finalPricePEN !== totalGeneralPEN) {
-      const adjustment = totalGeneralPEN - finalPricePEN;
+    if (totalGeneralPEN > 0 && currentFinalPricePEN !== totalGeneralPEN) {
+      const adjustment = totalGeneralPEN - currentFinalPricePEN;
       setAdjustmentPercentage((adjustment / totalGeneralPEN) * 100);
     } else {
       setAdjustmentPercentage(0);
     }
-  }, [totalGeneralPEN, finalPricePEN]);
+  }, [totalGeneralPEN, currentFinalPricePEN]);
 
-  const totalWeight = products.reduce((sum, p) => sum + (p.weight || 0), 0)
-  const digitalProductsCount = products.filter(p => p.weight === 0).length
+  useEffect(() => {
+    const subtotalUSD = products.reduce((sum, p) => sum + (p.price || 0), 0); // Multiply by quantity
+    const subtotalPEN = subtotalUSD * exchangeRate;
+    const shippingCostsPEN = shippingCostsUSD * exchangeRate;
+    const profitPEN = products.reduce((sum, p) => sum + (p.profit_amount || 0), 0); // Assuming profit_amount is total, not per unit
+    const totalPEN = subtotalPEN + shippingCostsPEN + profitPEN;
+    const totalUSD = totalPEN / exchangeRate;
+    
+    setLocalTotalGeneralPEN(totalPEN);
+    setLocalTotalGeneralUSD(totalUSD);
+    setTotalGeneralUSDInStore(totalUSD); // Update store with USD value
+    
+    setLocalCurrentFinalPricePEN(totalPEN);
+    setLocalCurrentFinalPriceUSD(totalUSD);
+    setCurrentFinalPriceUSDInStore(totalUSD); // Update store with USD value
+  }, [products, exchangeRate, shippingCostsUSD, setCurrentFinalPriceUSDInStore, setTotalGeneralUSDInStore]);
+
+  const totalWeight = products.reduce((sum, p) => sum + (p.weight || 0), 0);
+  const subtotalUSD = products.reduce((sum, p) => sum + (p.price || 0), 0);
+  const subtotalPEN = subtotalUSD * exchangeRate;
+  const shippingCostsPEN = shippingCostsUSD * exchangeRate;
+  const profitPEN = products.reduce((sum, p) => sum + (p.profit_amount || 0), 0);
+  
+  const actualProfitPEN = profitPEN + (currentFinalPricePEN - totalGeneralPEN);
+  const actualProfitUSD = actualProfitPEN / exchangeRate;
+
+  // Save the actual profit to the store when it changes
+  useEffect(() => {
+    setProfit(actualProfitPEN); // Keep profit in PEN as requested
+  }, [actualProfitPEN, setProfit]);
+
+  // Determine the current final price to display in the input, based on selected currency
+  const displayedFinalPrice = displayCurrencyForFinalPrice === "PEN"
+    ? currentFinalPricePEN
+    : currentFinalPriceUSD;
 
   const handleSuggestionClick = (suggestionValue: number) => {
     setSelectedRoundedPrice(prevSelected => {
       const newSelection = prevSelected === suggestionValue ? null : suggestionValue;
+
       if (newSelection !== null) {
-        if (finalPriceDisplayCurrency === "USD") {
-          setFinalPricePEN(newSelection * exchangeRate); // Use exchangeRate from store
-        } else {
-          setFinalPricePEN(newSelection);
+        // A new suggestion is selected
+        if (displayCurrencyForFinalPrice === "PEN") {
+          setLocalCurrentFinalPricePEN(newSelection);
+          const usdValue = newSelection / exchangeRate;
+          setLocalCurrentFinalPriceUSD(usdValue);
+          setCurrentFinalPriceUSDInStore(usdValue); // Store in USD
+        } else { // USD
+          setLocalCurrentFinalPriceUSD(newSelection);
+          setLocalCurrentFinalPricePEN(newSelection * exchangeRate);
+          setCurrentFinalPriceUSDInStore(newSelection); // Store in USD
         }
       } else {
-        setFinalPricePEN(totalGeneralPEN); // Use totalGeneralPEN from store
+        // Suggestion is deselected, revert to original values
+        setLocalCurrentFinalPricePEN(totalGeneralPEN);
+        setLocalCurrentFinalPriceUSD(totalGeneralUSD);
+        setCurrentFinalPriceUSDInStore(totalGeneralUSD); // Store in USD
       }
-      return newSelection;
+      return newSelection; // Updates selectedRoundedPrice state
     });
   };
 
-  const handleFinalPriceInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const newPriceString = event.target.value;
+  const handleFinalPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newPriceString = e.target.value;
     setSelectedRoundedPrice(null);
 
     if (newPriceString === "") {
-      setFinalPricePEN(totalGeneralPEN); // Use totalGeneralPEN from store
+      setLocalCurrentFinalPricePEN(totalGeneralPEN);
+      setLocalCurrentFinalPriceUSD(totalGeneralUSD);
+      setCurrentFinalPriceUSDInStore(totalGeneralUSD); // Store in USD
       return;
     }
 
-    const newRawValue = parseFloat(newPriceString);
-    if (!isNaN(newRawValue) && newRawValue >= 0) {
-      if (finalPriceDisplayCurrency === "USD") {
-        setFinalPricePEN(newRawValue * exchangeRate); // Use exchangeRate from store
-      } else {
-        setFinalPricePEN(newRawValue);
+    const newPrice = parseFloat(newPriceString);
+    if (!isNaN(newPrice)) {
+      if (displayCurrencyForFinalPrice === "PEN") {
+        setLocalCurrentFinalPricePEN(newPrice);
+        const usdValue = newPrice / exchangeRate;
+        setLocalCurrentFinalPriceUSD(usdValue);
+        setCurrentFinalPriceUSDInStore(usdValue); // Store in USD
+      } else { // USD
+        setLocalCurrentFinalPriceUSD(newPrice);
+        setLocalCurrentFinalPricePEN(newPrice * exchangeRate);
+        setCurrentFinalPriceUSDInStore(newPrice); // Store in USD
       }
     }
   };
-
-  // Determine the current final price to display in the input, based on selected currency (from store) and finalPricePEN (from store)
-  const displayedFinalPrice = finalPriceDisplayCurrency === "PEN"
-    ? finalPricePEN
-    : finalPricePEN / (exchangeRate || 3.7); // Fallback for exchangeRate if 0
-
-  // Calculate the actual ganancia to be displayed
-  const actualGananciaPEN = profitAmountPEN + (finalPricePEN - totalGeneralPEN);
-  // Ensure exchangeRate has a fallback to prevent division by zero if it's not yet set
-  const currentExchangeRate = exchangeRate || 3.7;
-  const actualGananciaUSD = profitAmountUSD + (finalPricePEN - totalGeneralPEN) / currentExchangeRate;
 
   return (
     <Card className="shadow-lg">
       <CardHeader className="pb-3">
         <div className="flex justify-between items-center">
-          <CardTitle className="text-xl font-semibold">Resumen de Totales</CardTitle>
+          <CardTitle className="text-xl font-semibold">Totals Summary</CardTitle>
           <Drawer direction="right">
             <DrawerTrigger asChild>
               <Button variant="outline" size="icon">
                 <Calculator className="h-5 w-5" />
-                <span className="sr-only">Abrir Calculadora de Precios</span>
+                <span className="sr-only">Open Pricing Calculator</span>
               </Button>
             </DrawerTrigger>
             <DrawerContent>
               <DrawerHeader>
-                <DrawerTitle>Calculadora de Precios</DrawerTitle>
+                <DrawerTitle>Pricing Calculator</DrawerTitle>
                 <DrawerDescription>
-                  Ajusta los precios y revisa los márgenes de ganancia.
+                  Adjust prices and review profit margins.
                 </DrawerDescription>
               </DrawerHeader>
               <div className="p-4">
                 <PricingCalculator
-                  disabled={true} // You might want to make these props dynamic
+                  disabled={true} 
                   basePrice={subtotalUSD}
                   weight={totalWeight}
                   taxPercentage={0}
@@ -201,7 +202,7 @@ export const TotalSummaryCard = () => {
               </div>
               <DrawerFooter>
                 <DrawerClose asChild>
-                  <Button variant="outline">Cerrar</Button>
+                  <Button variant="outline">Close</Button>
                 </DrawerClose>
               </DrawerFooter>
             </DrawerContent>
@@ -210,8 +211,8 @@ export const TotalSummaryCard = () => {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-          <div>Peso Total: {totalWeight.toFixed(2)} kg {digitalProductsCount > 0 && `(${digitalProductsCount} digital)`}</div>
-          <div className="text-right">TC: S/. {(exchangeRate || 0).toFixed(2)}</div> {/* Use exchangeRate from store */}
+          <div>Total Weight: {totalWeight.toFixed(2)} kg</div>
+          <div className="text-right">ER: S/. {(exchangeRate || 0).toFixed(2)}</div> 
         </div>
 
         <Separator />
@@ -224,22 +225,22 @@ export const TotalSummaryCard = () => {
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-sm">Gastos de envio:</span>
+            <span className="text-sm">Shipping Costs:</span>
             <span className="text-sm font-semibold">
               ${shippingCostsUSD.toFixed(2)} / S/. {shippingCostsPEN.toFixed(2)}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-sm">Ganancia Total:</span>
+            <span className="text-sm">Total Profit:</span>
             <span className="text-sm font-semibold text-green-600">
-              ${actualGananciaUSD.toFixed(2)} / S/. {actualGananciaPEN.toFixed(2)}
+              ${actualProfitUSD.toFixed(2)} / S/. {actualProfitPEN.toFixed(2)}
             </span>
           </div>
           <Separator className="my-2" />
           <div className="flex justify-between">
             <span className="text-base font-bold">Total:</span>
             <span className="text-base font-bold">
-              ${totalGeneralUSD.toFixed(2)} / S/. {totalGeneralPEN.toFixed(2)} {/* Use totals from store */}
+              ${totalGeneralUSD.toFixed(2)} / S/. {totalGeneralPEN.toFixed(2)} 
             </span>
           </div>
         </div>
@@ -250,17 +251,17 @@ export const TotalSummaryCard = () => {
         <div className="bg-muted/50 p-3 rounded-md">
           <div className="flex justify-between items-center mb-2">
             <Label htmlFor="finalPriceDisplayCurrencyToggle" className="text-sm font-medium">
-              Moneda para Precio Final y Sugerencias:
+              Currency for Final Price & Suggestions:
             </Label>
             <ToggleGroup
               id="finalPriceDisplayCurrencyToggle"
               type="single"
               variant="outline"
-              value={finalPriceDisplayCurrency} // Use from store
+              value={displayCurrencyForFinalPrice} 
               onValueChange={(value) => {
                 if (value) {
-                  setFinalPriceDisplayCurrency(value as "PEN" | "USD"); // Update store
-                  setFinalPricePEN(totalGeneralPEN); // Update store, using totalGeneralPEN from store
+                  setDisplayCurrencyForFinalPriceInStore(value as "PEN" | "USD"); 
+                  setLocalCurrentFinalPricePEN(totalGeneralPEN); 
                   setSelectedRoundedPrice(null);
                 }
               }}
@@ -275,7 +276,7 @@ export const TotalSummaryCard = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <Label htmlFor="enableRounding" className="text-sm font-medium">
-                  Ajustar Precio Final
+                  Adjust Final Price
                 </Label>
               </div>
               {enableRounding && <Sparkles className="h-5 w-5 text-amber-500" />}
@@ -283,7 +284,7 @@ export const TotalSummaryCard = () => {
 
             {enableRounding && suggestedPrices.length > 0 && (
               <div className="space-y-2 pt-2">
-                <Label className="text-xs text-muted-foreground">Selecciona un precio sugerido:</Label>
+                <Label className="text-xs text-muted-foreground">Select a Suggested Price:</Label>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {suggestedPrices.map((suggestion) => (
                     <Button
@@ -300,30 +301,30 @@ export const TotalSummaryCard = () => {
               </div>
             )}
 
-            {enableRounding && (selectedRoundedPrice !== null || finalPricePEN !== totalGeneralPEN) && (
+            {enableRounding && (selectedRoundedPrice !== null || currentFinalPricePEN !== totalGeneralPEN) && (
               <div className={`grid grid-cols-2 gap-x-2 gap-y-1 p-3 rounded-md mt-2 text-sm ${adjustmentPercentage >= 0 ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
-                <div className="font-medium">Precio Ajustado:</div>
+                <div className="font-medium">Adjusted Price:</div>
                 <div className="text-right font-bold">
-                  S/. {finalPricePEN.toFixed(2)} {/* Use finalPricePEN from store */}
-                  {finalPriceDisplayCurrency === "USD" && ` ( ${formatCurrency(finalPricePEN / (exchangeRate || 3.7), "USD")} )`}
+                  S/. {currentFinalPricePEN.toFixed(2)} 
+                  {displayCurrencyForFinalPrice === "USD" && ` ( ${formatCurrency(currentFinalPricePEN / (exchangeRate || 3.7), "USD")} )`}
                 </div>
 
                 <div className="font-medium">
-                  {adjustmentPercentage >= 0 ? "Descuento:" : "Incremento:"}
+                  {adjustmentPercentage >= 0 ? "Discount Applied:" : "Price Increase Applied:"}
                 </div>
                 <div className={`text-right font-semibold ${adjustmentPercentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {Math.abs(adjustmentPercentage).toFixed(2)}% (S/. {Math.abs(totalGeneralPEN - finalPricePEN).toFixed(2)})
+                  {Math.abs(adjustmentPercentage).toFixed(2)}% (S/. {Math.abs(totalGeneralPEN - currentFinalPricePEN).toFixed(2)})
                 </div>
 
                 <div className="col-span-2 pt-1">
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Original: S/. {totalGeneralPEN.toFixed(2)}</span> {/* Use totalGeneralPEN from store */}
-                    {adjustmentPercentage >= 0 && finalPricePEN < totalGeneralPEN ?
+                    <span>Original: S/. {totalGeneralPEN.toFixed(2)}</span> 
+                    {adjustmentPercentage >= 0 && currentFinalPricePEN < totalGeneralPEN ?
                       <ArrowDown className="h-3 w-3 text-green-600" /> :
-                      (adjustmentPercentage < 0 && finalPricePEN > totalGeneralPEN ?
+                      (adjustmentPercentage < 0 && currentFinalPricePEN > totalGeneralPEN ?
                         <ArrowUp className="h-3 w-3 text-red-600" /> : null)
                     }
-                    <span>Ajustado: S/. {finalPricePEN.toFixed(2)}</span> {/* Use finalPricePEN from store */}
+                    <span>Adjusted: S/. {currentFinalPricePEN.toFixed(2)}</span> 
                   </div>
                 </div>
               </div>
@@ -337,21 +338,21 @@ export const TotalSummaryCard = () => {
         <div className="bg-primary/10 p-3 rounded-md">
           <div className="flex justify-between items-center mb-2">
             <Label htmlFor="finalPriceInput" className="text-lg font-bold">
-              PRECIO FINAL ({finalPriceDisplayCurrency === "PEN" ? "S/." : "$"}): {/* Use from store */}
+              FINAL PRICE ({displayCurrencyForFinalPrice === "PEN" ? "S/." : "$"}): 
             </Label>
           </div>
           <InputNumber
             id="finalPriceInput"
-            value={parseFloat(displayedFinalPrice.toFixed(2))}
-            onChange={handleFinalPriceInputChange}
+            value={displayedFinalPrice} // Simplified value prop
+            onChange={handleFinalPriceChange}
             className="text-lg font-bold text-right w-full p-1 border-primary/50 focus:border-primary"
             step={0.01}
             min={0}
-            key={finalPriceDisplayCurrency} // Use from store
+            key={displayCurrencyForFinalPrice} 
           />
-          {(selectedRoundedPrice !== null || finalPricePEN !== totalGeneralPEN) && adjustmentPercentage !== 0 && (
+          {(selectedRoundedPrice !== null || currentFinalPricePEN !== totalGeneralPEN) && adjustmentPercentage !== 0 && (
             <div className="text-xs text-muted-foreground col-span-2 text-right pt-1">
-              {`Ajuste del ${Math.abs(adjustmentPercentage).toFixed(2)}% aplicado sobre S/. ${totalGeneralPEN.toFixed(2)}`} {/* Use totalGeneralPEN from store */}
+              {`Adjustment of ${Math.abs(adjustmentPercentage).toFixed(2)}% applied to S/. ${totalGeneralPEN.toFixed(2)}`} 
             </div>
           )}
         </div>

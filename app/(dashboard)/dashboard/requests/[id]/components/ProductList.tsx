@@ -37,6 +37,7 @@ import {
   flexRender,
   createColumnHelper,
   ColumnDef,
+  Column, // Added Column here
   getFilteredRowModel,
   getPaginationRowModel
 } from '@tanstack/react-table'
@@ -51,8 +52,8 @@ interface ProductListProps {
 interface EditableCellProps<TData> {
   getValue: () => any;
   row: { original: TData; index: number };
-  column: { id: string };
-  table: any;
+  column: Column<TData, unknown>; // Changed type here
+  table: any; // Consider typing table more strictly as Table<TData> if needed later
 }
 
 // Memoized EditableCell component to prevent unnecessary re-renders
@@ -74,7 +75,7 @@ const EditableCell = React.memo<EditableCellProps<Product>>(function EditableCel
   // Format display based on field type - memoized to prevent recalculations
   const formattedValue = useMemo(() => {
     if (field === 'base_price' || field === 'profit_amount' || field === 'price') {
-      return `$${Number(value || 0).toFixed(2)}`;
+      return `${Number(value || 0).toFixed(2)}`;
     } else if (field === 'weight' && Number(value) > 0) {
       return `${Number(value).toFixed(2)} kg`;
     } else if (field === 'tax') {
@@ -149,7 +150,11 @@ const EditableCell = React.memo<EditableCellProps<Product>>(function EditableCel
   if (isEditing) {
     return (
       <div className="flex items-center relative">
-        {field === 'base_price' || field === 'profit_amount' || field === 'price' ? (
+        {field === 'base_price' ? (
+          <span className="absolute left-2 text-muted-foreground">$</span>
+        ) : field === 'profit_amount' ? (
+          <span className="absolute left-2 text-muted-foreground">S/</span>
+        ) : field === 'price' ? (
           <span className="absolute left-2 text-muted-foreground">$</span>
         ) : null}
         <InputNumber
@@ -178,7 +183,7 @@ const EditableCell = React.memo<EditableCellProps<Product>>(function EditableCel
       className={`cursor-pointer hover:text-primary transition-colors duration-200 py-1 px-1 rounded hover:bg-accent ${field === 'price' ? 'font-medium' : ''}`}
       onClick={() => field !== 'price' && table.options.meta?.startEdit(productId, field)}
     >
-      {formattedValue}
+      {column.columnDef.meta?.prefix || ''}{formattedValue}
     </span>
   );
 })
@@ -476,7 +481,7 @@ export default function ProductList({ requestId }: ProductListProps) {
       header: "Ganancia",
       cell: EditableCell,
       size: 100,
-      meta: { type: 'number', prefix: '$' }
+      meta: { type: 'number', prefix: 'S/' }
     }),
     columnHelper.accessor("tax", {
       header: "Imp. (%)",

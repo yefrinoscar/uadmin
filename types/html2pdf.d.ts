@@ -34,3 +34,16 @@ declare module 'html2pdf.js' {
 
   export = html2pdf;
 }
+
+import '@tanstack/react-table';
+
+declare module '@tanstack/react-table' {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  interface ColumnMeta<TData extends RowData, TValue> {
+    type?: 'number' | 'text' | 'select';
+    prefix?: string;
+    suffix?: string;
+    readOnly?: boolean;
+    // Add any other custom meta properties you use
+  }
+}

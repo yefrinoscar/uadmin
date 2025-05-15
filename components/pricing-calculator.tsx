@@ -150,7 +150,7 @@ export function PricingCalculator({
                     <InputNumber
                       id="marginPEN"
                       type="number"
-                      value={_marginPEN}
+                      value={_marginPEN === 0 ? "" : _marginPEN}
                       onChange={(e) => {
                         if (!disabled) {
                           const value = Number(e.target.value);
