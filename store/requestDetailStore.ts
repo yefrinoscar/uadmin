@@ -23,6 +23,9 @@ export interface Request {
   } | null
   response?: string
   email_sent?: boolean
+  price?: number
+  total_price?: number
+  final_price?: number
 }
 
 interface RequestDetailState {
@@ -34,20 +37,17 @@ interface RequestDetailState {
   tax: number
   total: number
   notes: string
-  response: string
   calculations: any
   weight: number
   exchangeRate: number
-  totalGeneralPEN: number
   totalGeneralUSD: number
-  finalPricePEN: number
+  finalPriceUSD: number
   finalPriceDisplayCurrency: "PEN" | "USD"
+  profit: number
   
   // UI state
   loading: boolean
   isLoading: boolean
-  isSendingEmail: boolean
-  emailSent: boolean
   
   // Actions
   setRequest: (request: any) => void
@@ -61,19 +61,20 @@ interface RequestDetailState {
   setNotes: (notes: string) => void
   setLoading: (loading: boolean) => void
   setIsLoading: (isLoading: boolean) => void
-  setResponse: (response: string) => void
   setCalculations: (calculations: any) => void
-  setIsSendingEmail: (isSendingEmail: boolean) => void
-  setEmailSent: (emailSent: boolean) => void
   setWeight: (weight: number) => void
   setExchangeRate: (rate: number) => void
-  setTotalGeneralPEN: (amount: number) => void
   setTotalGeneralUSD: (amount: number) => void
-  setFinalPricePEN: (price: number) => void
+  setFinalPriceUSD: (price: number) => void
   setFinalPriceDisplayCurrency: (currency: "PEN" | "USD") => void
+  setProfit: (profit: number) => void
+  
+  // Computed getters for PEN values (derived from USD)
+  getTotalGeneralPEN: () => number
+  getFinalPricePEN: () => number
 }
 
-export const useRequestDetailStore = create<RequestDetailState>((set) => ({
+export const useRequestDetailStore = create<RequestDetailState>((set, get) => ({
   // Initial state
   request: null,
   products: [],
@@ -84,16 +85,13 @@ export const useRequestDetailStore = create<RequestDetailState>((set) => ({
   notes: "",
   loading: false,
   isLoading: true,
-  response: "",
   calculations: null,
-  isSendingEmail: false,
-  emailSent: false,
   weight: 0,
   exchangeRate: 3.7,
-  totalGeneralPEN: 0,
   totalGeneralUSD: 0,
-  finalPricePEN: 0,
+  finalPriceUSD: 0,
   finalPriceDisplayCurrency: "PEN" as "PEN" | "USD",
+  profit: 0,
 
   // Actions
   setRequest: (request) => set({ request }),
@@ -141,8 +139,6 @@ export const useRequestDetailStore = create<RequestDetailState>((set) => ({
   },
   
   setBasePrice: (basePrice) => {
-    console.log('HOLAS', basePrice);
-    
     set((state) => ({ 
       basePrice,
       total: basePrice + state.shipping + state.tax
@@ -170,14 +166,21 @@ export const useRequestDetailStore = create<RequestDetailState>((set) => ({
   // UI state
   setLoading: (loading) => set({ loading }),
   setIsLoading: (isLoading) => set({ isLoading }),
-  setResponse: (response) => set({ response }),
   setCalculations: (calculations) => set({ calculations }),
-  setIsSendingEmail: (isSendingEmail) => set({ isSendingEmail }),
-  setEmailSent: (emailSent) => set({ emailSent }),
   setWeight: (weight) => set({ weight }),
   setExchangeRate: (rate) => set({ exchangeRate: rate }),
-  setTotalGeneralPEN: (amount) => set({ totalGeneralPEN: amount }),
   setTotalGeneralUSD: (amount) => set({ totalGeneralUSD: amount }),
-  setFinalPricePEN: (price) => set({ finalPricePEN: price }),
-  setFinalPriceDisplayCurrency: (currency) => set({ finalPriceDisplayCurrency: currency })
+  setFinalPriceUSD: (price) => set({ finalPriceUSD: price }),
+  setFinalPriceDisplayCurrency: (currency) => set({ finalPriceDisplayCurrency: currency }),
+  setProfit: (profit) => set({ profit }),
+  
+  // Computed getters
+  getTotalGeneralPEN: () => {
+    const state = get();
+    return state.totalGeneralUSD * state.exchangeRate;
+  },
+  getFinalPricePEN: () => {
+    const state = get();
+    return state.finalPriceUSD * state.exchangeRate;
+  }
 })) 

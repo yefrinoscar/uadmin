@@ -67,6 +67,7 @@ const PurchaseRequestSchema = z.object({
   created_at: z.string().nullable(),
   updated_at: z.string().nullable(),
   price: z.number().optional().nullable(),
+  final_price: z.number().optional().nullable(),
   response: z.string().optional().nullable(),
   url: z.string().url().optional().nullable(),
   email_sent: z.boolean().optional().nullable(),
@@ -497,11 +498,12 @@ export const requestsRouter = router({
     .input(z.object({
       id: z.string(),
       price: z.number().optional(),
+      finalPrice: z.number().optional(),
       response: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       try {
-        const { id, price, response } = input;
+        const { id, price, finalPrice, response } = input;
 
         // First, let's check if the request exists
         const { data: existingRequest, error: findError } = await ctx.supabase
@@ -526,6 +528,10 @@ export const requestsRouter = router({
 
         if (response !== undefined) {
           updateData.response = response;
+        }
+        
+        if (finalPrice !== undefined) {
+          updateData.final_price = finalPrice;
         }
 
         const { error: updateError } = await ctx.supabase

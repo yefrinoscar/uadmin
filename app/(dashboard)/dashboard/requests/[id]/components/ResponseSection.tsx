@@ -12,14 +12,14 @@ import { useMutation } from '@tanstack/react-query'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface ResponseSectionProps {
-  response: string
+  responseText: string
   onChangeResponse: (v: string) => void
   client?: Client | null
   calculations: { totalUSD: number; totalPEN: number }
 }
 
 export function ResponseSection({
-  response,
+  responseText,
   client,
   calculations,
   onChangeResponse
@@ -61,8 +61,8 @@ export function ResponseSection({
   };
 
   const copyToClipboard = async () => {
-    if (response) {
-      await navigator.clipboard.writeText(response);
+    if (responseText) {
+      await navigator.clipboard.writeText(responseText);
       setIsCopied(true);
       toast("Copiado", {
         description: "Respuesta copiada al portapapeles"
@@ -80,7 +80,7 @@ export function ResponseSection({
               <TooltipTrigger asChild>
                 <Button
                   onClick={copyToClipboard}
-                  disabled={!response}
+                  disabled={!responseText}
                   className="text-white"
                   variant='outline'
                 >
@@ -97,7 +97,7 @@ export function ResponseSection({
         <Textarea
           className="flex-grow min-h-[400px]"
           placeholder="Escribe la respuesta para el cliente..."
-          value={response}
+          value={responseText}
           disabled={isGenerating}
           onChange={(e) => onChangeResponse(e.target.value)}
         />

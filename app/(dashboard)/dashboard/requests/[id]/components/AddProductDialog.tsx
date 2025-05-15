@@ -58,7 +58,7 @@ export function AddProductDialog({
   const [open, setOpen] = useState(false)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { setCalculations, calculations } = useRequestDetailStore();
+  const { setCalculations, calculations, exchangeRate } = useRequestDetailStore();
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -97,13 +97,15 @@ export function AddProductDialog({
     const numericBasePrice = Number(basePrice) || 0;
     const numericProfitAmount = Number(profitAmount) || 0;
     const numericTax = Number(tax) || 0;
+    const currentExchangeRate = Number(exchangeRate) || 3.7; // Fallback if not loaded
 
     if (isNaN(numericBasePrice)) return 0;
 
-    const priceWithProfit = numericBasePrice + numericProfitAmount;
-    const finalPrice = priceWithProfit * (1 + numericTax / 100);
-    return parseFloat(finalPrice.toFixed(2));
-  }, [basePrice, profitAmount, tax]);
+    const basePricePEN = numericBasePrice * currentExchangeRate;
+    const subtotalPEN = basePricePEN + numericProfitAmount;
+    const finalPriceWithTaxPEN = subtotalPEN * (1 + numericTax / 100);
+    return parseFloat(finalPriceWithTaxPEN.toFixed(2));
+  }, [basePrice, profitAmount, tax, exchangeRate]);
 
   const onSubmit = (data: ProductFormData) => {
     if (calculatedFinalPrice === undefined || calculatedFinalPrice === null || isNaN(calculatedFinalPrice)) {
@@ -243,7 +245,7 @@ export function AddProductDialog({
               name="profit_amount"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Ganancia (USD)</FormLabel>
+                  <FormLabel>Ganancia (S/)</FormLabel>
                   <FormControl>
                     <div className="relative">
                       <InputNumber 
@@ -253,13 +255,10 @@ export function AddProductDialog({
                         min="0"
                         step="0.01"
                       />
-                      <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                        <DollarSign className="h-4 w-4 text-gray-500" />
-                      </div>
                     </div>
                   </FormControl>
                   <FormDescription className="text-xs">
-                    Subtotal: ${(Number(basePrice || 0) + Number(profitAmount || 0)).toFixed(2)} / Precio Final (con impuesto): ${((Number(basePrice || 0) + Number(profitAmount || 0)) * (1 + Number(tax || 0) / 100)).toFixed(2)}
+                    Subtotal: S/ {( (Number(basePrice || 0) * (Number(exchangeRate) || 3.7)) + Number(profitAmount || 0) ).toFixed(2)} / Precio Final (con impuesto): S/ {(( (Number(basePrice || 0) * (Number(exchangeRate) || 3.7)) + Number(profitAmount || 0)) * (1 + Number(tax || 0) / 100)).toFixed(2)}
                   </FormDescription>
                 </FormItem>
               )}
