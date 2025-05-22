@@ -20,6 +20,7 @@ import {
   FormField,
   FormItem,
   FormLabel,
+  FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -36,58 +37,45 @@ const formSchema = z.object({
     z.string().email("El formato del correo electrónico no es válido.").optional()
   ),
   phone_number: z.preprocess(
-    (val) => { // Normalize input: empty strings or only whitespace become undefined
+    (val) => { 
       if (typeof val === "string") {
         const trimmedVal = val.trim();
         return trimmedVal === "" ? undefined : trimmedVal;
       }
-      return undefined; // If not a string, treat as undefined
+      return undefined;
     },
     z.string()
-      .optional() // The field itself is optional
-      .transform((value, ctx) => { // This transform runs if 'value' is a string (i.e., not undefined)
-        // 'value' here is the result from preprocess that is not undefined.
-        // Ensure underscores from partial mask input are also removed.
-        let phoneNumber = value?.replace(/[\s()_-]/g, "") || ""; // Clean spaces, parentheses, hyphens, and underscores
+      .optional()
+      .transform((value, ctx) => {
+        if (!value) return undefined;
+        
+        let phoneNumber = value.replace(/[\s()_-]/g, "");
 
-        // Handle +51 or 51 prefix for validation
-        if (phoneNumber?.startsWith("+51")) {
+        if (phoneNumber.startsWith("+51")) {
           phoneNumber = phoneNumber.substring(3);
-        } else if (phoneNumber?.startsWith("51") && phoneNumber?.length > 9) { 
-          // Catches cases like "51987654321" where "51" is part of a national number + country code
+        } else if (phoneNumber.startsWith("51") && phoneNumber.length > 9) {
           phoneNumber = phoneNumber.substring(2);
         }
-        // If no prefix, phoneNumber remains as is, to be validated for 9 digits.
 
-        // Validate that the remaining part consists of exactly 9 digits
         if (!/^\d{9}$/.test(phoneNumber)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            // Using a more specific message that includes format expectation
             message: "Debe ser un número peruano de 9 dígitos. Ej: 987654321", 
           });
-          return z.NEVER; // Important for Zod to handle the error correctly
+          return z.NEVER;
         }
         
-        // Format the number as +51 XXX XXX XXX
         return `+51 ${phoneNumber.substring(0, 3)} ${phoneNumber.substring(3, 6)} ${phoneNumber.substring(6, 9)}`;
       })
   ),
   name: z.string().min(1, "El nombre es requerido."),
-}).superRefine((data, ctx) => {
-  if (data.email === undefined && data.phone_number === undefined) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Debe proporcionar un correo electrónico o un número de teléfono.",
-      path: ["email"],
-    });
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Debe proporcionar un correo electrónico o un número de teléfono.",
-      path: ["phone_number"],
-    });
+}).refine(
+  (data) => data.email !== undefined || data.phone_number !== undefined,
+  {
+    message: "Debe proporcionar un correo electrónico o un número de teléfono.",
+    path: ["email"]
   }
-});
+);
 
 type FormData = z.infer<typeof formSchema>;
 
@@ -137,6 +125,26 @@ export function AddRequestDialog({ children, onRequestAdded }: AddRequestDialogP
     await createRequestMutation.mutateAsync({ ...data, user_id: user?.id || '' })
   }
 
+  // Handle field changes
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    form.setValue("email", value);
+    // If we have a valid email, clear phone number field errors
+    if (value && value.includes('@')) {
+      form.clearErrors("phone_number");
+    }
+    form.trigger();
+  };
+
+  const handlePhoneChange = (value: string) => {
+    form.setValue("phone_number", value);
+    // If we have something resembling a phone number, clear email field errors
+    if (value && value.replace(/[\s()_-]/g, "").length > 8) {
+      form.clearErrors("email");
+    }
+    form.trigger();
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -146,7 +154,7 @@ export function AddRequestDialog({ children, onRequestAdded }: AddRequestDialogP
         <DialogHeader>
           <DialogTitle>Nueva Solicitud</DialogTitle>
           <DialogDescription>
-            Crea una nueva solicitud de compra. Ingresa al menos el nombre o teléfono del cliente.
+            Crea una nueva solicitud de compra. Ingresa al menos un correo electrónico o un número de teléfono.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -164,9 +172,11 @@ export function AddRequestDialog({ children, onRequestAdded }: AddRequestDialogP
                       {...field}
                     />
                   </FormControl>
+                  <FormMessage />
                 </FormItem>
               )}
             />
+            
             <FormField
               control={form.control}
               name="email"
@@ -174,11 +184,20 @@ export function AddRequestDialog({ children, onRequestAdded }: AddRequestDialogP
                 <FormItem>
                   <FormLabel className="text-foreground">Email</FormLabel>
                   <FormControl>
-                    <Input placeholder="correo@ejemplo.com" {...field} />
+                    <Input 
+                      placeholder="correo@ejemplo.com" 
+                      value={field.value || ""}
+                      onChange={handleEmailChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                      ref={field.ref}
+                    />
                   </FormControl>
+                  <FormMessage />
                 </FormItem>
               )}
             />
+            
             <FormField
               control={form.control}
               name="phone_number"
@@ -190,7 +209,7 @@ export function AddRequestDialog({ children, onRequestAdded }: AddRequestDialogP
                       mask="+51 ___ ___ ___"
                       replacement={{ _: /\d/ }}
                       value={field.value || ""}
-                      onChange={field.onChange}
+                      onChange={(e) => handlePhoneChange(e.target.value)}
                       onBlur={field.onBlur}
                       name={field.name}
                       ref={field.ref}
@@ -198,9 +217,11 @@ export function AddRequestDialog({ children, onRequestAdded }: AddRequestDialogP
                       placeholder="+51 982 928 123"
                     />
                   </FormControl>
+                  <FormMessage />
                 </FormItem>
               )}
             />
+            
             <FormField
               control={form.control}
               name="name"
@@ -213,6 +234,7 @@ export function AddRequestDialog({ children, onRequestAdded }: AddRequestDialogP
                 </FormItem>
               )}
             />
+            
             <DialogFooter>
               <Button 
                 type="submit" 

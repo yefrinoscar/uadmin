@@ -61,18 +61,24 @@ export const ProductSchema = z.object({
 const PurchaseRequestSchema = z.object({
   id: z.string(),
   description: z.string(),
-  client: ClientSchema.nullable(),
-  assigned_user: AssignedUserSchema.nullable(),
   status: z.enum(["pending", "in_progress", "in_transit", "completed", "cancelled", "delivered"]).nullable(),
-  created_at: z.string().nullable(),
-  updated_at: z.string().nullable(),
-  price: z.number().optional().nullable(),
-  final_price: z.number().optional().nullable(),
   response: z.string().optional().nullable(),
   url: z.string().url().optional().nullable(),
+  sub_total: z.number().optional().nullable().default(0),
+  weight: z.number().optional().nullable().default(0),
+  profit: z.number().optional().nullable().default(0),
+  shipping_cost: z.number().optional().nullable(),
+  price: z.number().optional().nullable(),
+  final_price: z.number().optional().nullable(),
+  exchange_rate: z.number().optional(),
+  currency: z.string().optional().nullable(),
   email_sent: z.boolean().optional().nullable(),
   whatsapp_sent: z.boolean().optional().nullable(),
+  assigned_user: AssignedUserSchema.nullable(),
+  client: ClientSchema.nullable(),
   products: z.array(ProductSchema),
+  created_at: z.string().nullable(),
+  updated_at: z.string().nullable(),
 });
 
 const PurchaseRequestListSchema = z.object({
@@ -87,7 +93,10 @@ const PurchaseRequestListSchema = z.object({
   response: z.string().optional().nullable(),
   url: z.string().url().optional().nullable(),
   email_sent: z.boolean().optional().nullable(),
-  whatsapp_sent: z.boolean().optional().nullable()
+  whatsapp_sent: z.boolean().optional().nullable(),
+  sub_total: z.number().optional().nullable().default(0),
+  weight: z.number().optional().nullable().default(0),
+  profit: z.number().optional().nullable().default(0)
 });
 
 const CreateRequestSchema = z.object({
@@ -144,7 +153,10 @@ export const requestsRouter = router({
           assigned_user:users(id, name),
           url,
           email_sent,
-          whatsapp_sent
+          whatsapp_sent,
+          sub_total,
+          weight,
+          profit
         `, { count: 'exact' }) // Request total count for filtered query
         .order("created_at", { ascending: false })
         .range(offset, offset + pageSize - 1);
@@ -204,7 +216,10 @@ export const requestsRouter = router({
           response: item.response,
           url: item.url,
           email_sent: item.email_sent,
-          whatsapp_sent: item.whatsapp_sent
+          whatsapp_sent: item.whatsapp_sent,
+          sub_total: item.sub_total,
+          weight: item.weight,
+          profit: item.profit
         };
       }).filter(Boolean) as PurchaseRequestList[];
 
@@ -243,6 +258,9 @@ export const requestsRouter = router({
           id,
           description,
           price,
+          final_price,
+          exchange_rate,
+          currency,
           status,
           response,
           created_at,
@@ -500,10 +518,11 @@ export const requestsRouter = router({
       price: z.number().optional(),
       finalPrice: z.number().optional(),
       response: z.string().optional(),
+      currency: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       try {
-        const { id, price, finalPrice, response } = input;
+        const { id, price, finalPrice, response, currency } = input;
 
         // First, let's check if the request exists
         const { data: existingRequest, error: findError } = await ctx.supabase
@@ -532,6 +551,10 @@ export const requestsRouter = router({
         
         if (finalPrice !== undefined) {
           updateData.final_price = finalPrice;
+        }
+
+        if (currency !== undefined) {
+          updateData.currency = currency;
         }
 
         const { error: updateError } = await ctx.supabase
@@ -681,13 +704,14 @@ export const requestsRouter = router({
             .insert({
               request_id: requestId,
               title: processedProduct.title,
+              base_price: processedProduct.base_price || processedProduct.price,
               price: processedProduct.price,
+              profit_amount: processedProduct.profit_amount || 0,
+              tax: processedProduct.tax,
               weight: processedProduct.weight,
               description: processedProduct.description || '',
               source: processedProduct.source,
               image_url: processedProduct.image_url || null,
-              base_price: processedProduct.base_price || processedProduct.price,
-              profit_amount: processedProduct.profit_amount || 0,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
             });
@@ -801,6 +825,303 @@ export const requestsRouter = router({
             code: 'INTERNAL_SERVER_ERROR',
             message: 'Failed to create request'
           });
+      }
+    }),
+
+  getStats: protectedProcedure
+    .input(z.object({
+      period: z.enum(["current_month", "last_month", "current_year", "all"]).default("current_month")
+    }))
+    .query(async ({ ctx, input }) => {
+      try {
+        const now = new Date();
+        let startDate, endDate;
+        
+        // Set date range based on period
+        if (input.period === 'current_month') {
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+          endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
+        } else if (input.period === 'last_month') {
+          startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+          endDate = new Date(now.getFullYear(), now.getMonth(), 0).toISOString();
+        } else if (input.period === 'current_year') {
+          startDate = new Date(now.getFullYear(), 0, 1).toISOString();
+          endDate = new Date(now.getFullYear(), 11, 31).toISOString();
+        }
+
+        // Build query for all requests
+        let requestsQuery = ctx.supabase
+          .from('purchase_requests')
+          .select('id, status, price, created_at', { count: 'exact' });
+        
+        // Apply date filter if period is not 'all'
+        if (input.period !== 'all' && startDate && endDate) {
+          requestsQuery = requestsQuery.gte('created_at', startDate).lte('created_at', endDate);
+        }
+        
+        const { data: requestsData, error: requestsError, count: totalRequests } = await requestsQuery;
+        
+        if (requestsError) throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: requestsError.message
+        });
+
+        // Get completed requests (delivered or completed status)
+        let completedRequestsQuery = ctx.supabase
+          .from('purchase_requests')
+          .select('id', { count: 'exact' })
+          .in('status', ['delivered', 'completed']);
+        
+        // Apply date filter if period is not 'all'
+        if (input.period !== 'all' && startDate && endDate) {
+          completedRequestsQuery = completedRequestsQuery.gte('created_at', startDate).lte('created_at', endDate);
+        }
+        
+        const { count: completedRequests, error: completedError } = await completedRequestsQuery;
+        
+        if (completedError) throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: completedError.message
+        });
+
+        // Get all products with profit data
+        let productsQuery = ctx.supabase
+          .from('request_products')
+          .select('request_id, title, price, base_price, profit_amount');
+          
+        if (input.period !== 'all' && startDate && endDate) {
+          productsQuery = productsQuery.gte('created_at', startDate).lte('created_at', endDate);
+        }
+        
+        const { data: productsData, error: productsError } = await productsQuery;
+        
+        if (productsError) throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: productsError.message
+        });
+
+        // Calculate total profits
+        const totalProfit = productsData
+          ? productsData.reduce((sum, product) => sum + (product.profit_amount || 0), 0)
+          : 0;
+
+        // Calculate average profit per request
+        const avgProfitPerRequest = completedRequests && completedRequests > 0
+          ? totalProfit / completedRequests
+          : 0;
+
+        // Calculate conversion rate (completed / total)
+        const conversionRate = totalRequests && totalRequests > 0
+          ? (completedRequests || 0) / totalRequests
+          : 0;
+
+        // Get top products by frequency
+        const productFrequency: Record<string, { count: number, profit: number }> = {};
+        
+        if (productsData) {
+          productsData.forEach(product => {
+            const title = product.title;
+            if (!productFrequency[title]) {
+              productFrequency[title] = { count: 0, profit: 0 };
+            }
+            productFrequency[title].count += 1;
+            productFrequency[title].profit += (product.profit_amount || 0);
+          });
+        }
+        
+        // Sort by count and get top 5
+        const topProducts = Object.entries(productFrequency)
+          .sort((a, b) => b[1].count - a[1].count)
+          .slice(0, 5)
+          .map(([title, stats]) => ({
+            title,
+            count: stats.count,
+            profit: stats.profit
+          }));
+
+        return {
+          totalRequests: totalRequests || 0,
+          completedRequests: completedRequests || 0,
+          totalProfit,
+          avgProfitPerRequest,
+          conversionRate,
+          topProducts,
+          period: input.period
+        };
+      } catch (error: any) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error.message
+        });
+      }
+    }),
+
+  getTimeSeriesStats: protectedProcedure
+    .input(z.object({
+      period: z.enum(["current_month", "last_month", "current_year", "all"]).default("current_month")
+    }))
+    .query(async ({ ctx, input }) => {
+      try {
+        const now = new Date();
+        let startDate, endDate, groupFormat, dateFormat;
+        
+        // Set date range and format based on period
+        if (input.period === 'current_month' || input.period === 'last_month') {
+          // Daily data for a month
+          if (input.period === 'current_month') {
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
+          } else {
+            startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+            endDate = new Date(now.getFullYear(), now.getMonth(), 0).toISOString();
+          }
+          
+          groupFormat = 'DD'; // Day format for grouping
+          dateFormat = 'DD'; // Display as day number
+        } else if (input.period === 'current_year') {
+          // Monthly data for a year
+          startDate = new Date(now.getFullYear(), 0, 1).toISOString();
+          endDate = new Date(now.getFullYear(), 11, 31).toISOString();
+          
+          groupFormat = 'MM'; // Month format for grouping
+          dateFormat = 'Mon'; // Display as month name abbreviation
+        } else {
+          // Yearly data for all time
+          startDate = null;
+          endDate = null;
+          
+          groupFormat = 'YYYY'; // Year format for grouping
+          dateFormat = 'YYYY'; // Display as year
+        }
+
+        // Get all requests grouped by time
+        let requestsQuery = ctx.supabase
+          .from('purchase_requests')
+          .select('id, status, created_at');
+          
+        if (startDate && endDate) {
+          requestsQuery = requestsQuery.gte('created_at', startDate).lte('created_at', endDate);
+        }
+        
+        const { data: requestsData, error: requestsError } = await requestsQuery;
+        
+        if (requestsError) throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: requestsError.message
+        });
+        
+        // Get products data for profit calculation
+        let productsQuery = ctx.supabase
+          .from('request_products')
+          .select('request_id, profit_amount, created_at');
+          
+        if (startDate && endDate) {
+          productsQuery = productsQuery.gte('created_at', startDate).lte('created_at', endDate);
+        }
+        
+        const { data: productsData, error: productsError } = await productsQuery;
+        
+        if (productsError) throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: productsError.message
+        });
+
+        // Function to format date based on period
+        const formatDate = (dateStr: string): string => {
+          const date = new Date(dateStr);
+          if (input.period === 'current_month' || input.period === 'last_month') {
+            return date.getDate().toString().padStart(2, '0'); // DD
+          } else if (input.period === 'current_year') {
+            const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+            return monthNames[date.getMonth()]; // Month abbreviation
+          } else {
+            return date.getFullYear().toString(); // YYYY
+          }
+        };
+
+        // Group requests by date
+        const timeSeriesData: Record<string, { date: string, requests: number, completed: number, profit: number }> = {};
+        
+        // Prepare the full date range (all days/months/years)
+        if (input.period === 'current_month' || input.period === 'last_month') {
+          // For month, create entry for each day
+          const daysInMonth = new Date(
+            input.period === 'current_month' ? now.getFullYear() : now.getFullYear(), 
+            input.period === 'current_month' ? now.getMonth() + 1 : now.getMonth(), 
+            0
+          ).getDate();
+          
+          for (let i = 1; i <= daysInMonth; i++) {
+            const day = i.toString().padStart(2, '0');
+            timeSeriesData[day] = { date: day, requests: 0, completed: 0, profit: 0 };
+          }
+        } else if (input.period === 'current_year') {
+          // For year, create entry for each month
+          const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+          for (let i = 0; i < 12; i++) {
+            timeSeriesData[monthNames[i]] = { date: monthNames[i], requests: 0, completed: 0, profit: 0 };
+          }
+        } else {
+          // For all time, just use the years we have data for
+          const years = new Set<string>();
+          requestsData?.forEach(request => {
+            const year = new Date(request.created_at).getFullYear().toString();
+            years.add(year);
+          });
+          
+          years.forEach(year => {
+            timeSeriesData[year] = { date: year, requests: 0, completed: 0, profit: 0 };
+          });
+        }
+        
+        // Count total requests and completed requests
+        requestsData?.forEach(request => {
+          const dateKey = formatDate(request.created_at);
+          
+          if (!timeSeriesData[dateKey]) {
+            timeSeriesData[dateKey] = { date: dateKey, requests: 0, completed: 0, profit: 0 };
+          }
+          
+          timeSeriesData[dateKey].requests += 1;
+          
+          if (request.status === 'completed' || request.status === 'delivered') {
+            timeSeriesData[dateKey].completed += 1;
+          }
+        });
+        
+        // Calculate profits by date
+        productsData?.forEach(product => {
+          if (product.created_at && product.profit_amount) {
+            const dateKey = formatDate(product.created_at);
+            
+            if (timeSeriesData[dateKey]) {
+              timeSeriesData[dateKey].profit += (product.profit_amount || 0);
+            }
+          }
+        });
+        
+        // Convert to array and sort by date
+        const result = Object.values(timeSeriesData);
+        
+        // Sort by date
+        if (input.period === 'current_month' || input.period === 'last_month') {
+          result.sort((a, b) => parseInt(a.date) - parseInt(b.date));
+        } else if (input.period === 'current_year') {
+          const monthOrder: Record<string, number> = { 
+            'Ene': 0, 'Feb': 1, 'Mar': 2, 'Abr': 3, 'May': 4, 'Jun': 5, 
+            'Jul': 6, 'Ago': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dic': 11 
+          };
+          result.sort((a, b) => monthOrder[a.date] - monthOrder[b.date]);
+        } else {
+          result.sort((a, b) => parseInt(a.date) - parseInt(b.date));
+        }
+        
+        return result;
+      } catch (error: any) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error.message
+        });
       }
     }),
 });

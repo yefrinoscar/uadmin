@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState } from "react";
-import { Copy, Download, FileText } from "lucide-react";
+import { Copy, Download, Eye } from "lucide-react";
 import { toast } from "sonner";
 import {
   Drawer,
@@ -55,8 +55,8 @@ export function RequestPreviewDrawer() {
   const total = (subtotalPEN + shippingCostsPEN + profitPEN);
   const totalUSD = total / exchangeRate;
 
-  const formattedDate = request?.createdAt 
-    ? new Date(request.createdAt).toLocaleDateString('es-PE', {
+  const formattedDate = request?.created_at 
+    ? new Date(request.created_at).toLocaleDateString('es-PE', {
         day: '2-digit',
         month: 'long',
         year: 'numeric'
@@ -553,11 +553,8 @@ export function RequestPreviewDrawer() {
   return (
     <Drawer direction="right">
       <DrawerTrigger asChild>
-        <Button
-          variant="outline"
-          className="gap-1.5 border-blue-500/30 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:border-blue-800/40 dark:text-blue-400 dark:hover:bg-blue-950/50"
-        >
-          <FileText className="h-4 w-4" />
+        <Button variant="outline" className="transition-all">
+          <Eye className="h-4 w-4 mr-2" />
           Vista Previa
         </Button>
       </DrawerTrigger>

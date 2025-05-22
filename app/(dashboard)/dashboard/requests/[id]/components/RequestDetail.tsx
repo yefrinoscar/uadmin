@@ -2,65 +2,96 @@
 
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
-import { Mail, MessageCircle, Save, Send } from "lucide-react"
+import { Save, Loader2 } from "lucide-react"
 import { RequestDetailsCard } from "./RequestDetailsCard"
 import { TotalSummaryCard } from "./TotalSummaryCard"
 import ProductList from "./ProductList"
 import { useTRPC } from '@/trpc/client';
-import { useMutation, useSuspenseQuery } from "@tanstack/react-query"
+import { useMutation, useSuspenseQuery, useQueryClient, QueryKey } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import "./status-workflow.css"
 import { useRequestDetailStore } from "@/store/requestDetailStore"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { BackButton } from "@/components/back"
 import { PurchaseRequestStatus } from "../../types"
 import { StatusWorkflow } from "./StatusWorkflow";
 import { RequestPreviewDrawer } from "./RequestPreviewDrawer";
+import { PurchaseRequest } from "@/trpc/api/routers/requests"
 
 interface RequestDetailClientPageProps {
   id: string
 }
 
+function setQueryDataTypesafe<TData>(
+  queryClient: ReturnType<typeof useQueryClient>,
+  queryKey: QueryKey,
+  updater: TData | ((oldData: TData | undefined) => TData)
+) {
+  queryClient.setQueryData<TData>(queryKey, updater);
+}
+
 export function RequestDetail({ id }: RequestDetailClientPageProps) {
   const trpc = useTRPC();
-
-  // Get state and actions from Zustand store
+  const queryClient = useQueryClient();
   const {
     request,
-    finalPriceUSD,
-    totalGeneralUSD,
-    getFinalPricePEN,
-    getTotalGeneralPEN,
-
     setRequest,
-    setProducts
   } = useRequestDetailStore();
 
   // Local state for UI and editing
-  const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
-  const [responseText] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // tRPC queries and mutations
   const requestQueryOptions = trpc.requests.getById.queryOptions({ id });
   const { data: requestData, refetch } = useSuspenseQuery(requestQueryOptions);
-
+  
   const updateRequestMutation = useMutation(
     trpc.requests.updateRequest.mutationOptions({
-      onSuccess: () => {
-        toast.success("Cotización y precios guardados correctamente");
-        refetch(); // Refetch the data after mutation
-        setIsSaving(false);
+      onMutate: async (variables) => {
+        // Cancel any outgoing refetches
+        await queryClient.cancelQueries(requestQueryOptions);
+        
+        // Snapshot the previous value
+        const previousData = queryClient.getQueryData(requestQueryOptions.queryKey);
+        
+        // Optimistically update to the new value
+        setQueryDataTypesafe<PurchaseRequest>(queryClient, requestQueryOptions.queryKey, (old) => ({
+          ...old,
+          price: variables.price,
+          final_price: variables.finalPrice,
+          response: variables.response
+        } as PurchaseRequest));
+        
+        // Return a context object with the snapshotted value
+        return { previousData, variables };
       },
-      onError: (error) => {
+      onSuccess: () => {
+        toast.success("Cambios guardados correctamente", {
+          id: "save-request",
+          duration: 3000
+        });
+        // Explicitly update the store with the saved values
+        // This helps ensure the store reflects the just-saved state 
+        // before the refetch completes and the main useEffect runs.
+       
+      },
+      onError: (error, variables, context) => {
         console.error("Error updating request:", error);
         toast.error("Error", {
-          description: "No se pudo actualizar la respuesta y los precios",
+          description: "No se pudo guardar los cambios",
+          id: "save-request-error"
         });
-        setIsSaving(false);
+        
+        // Rollback to the previous value
+        if (context?.previousData) {
+          queryClient.setQueryData(requestQueryOptions.queryKey, context.previousData);
+        }
       },
+      onSettled: () => {
+        // Refetch after error or success to ensure consistency
+        queryClient.invalidateQueries(requestQueryOptions);
+      }
     })
   );
 
@@ -80,129 +111,124 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
     },
   }));
 
-  const sendEmailMutation = useMutation(
-    trpc.requests.sendEmail.mutationOptions({
-      onSuccess: () => {
-        toast.success("Email enviado correctamente");
-        refetch(); // Refetch data to update request.email_sent status
-        setIsSendingEmail(false);
-      },
-      onError: (error) => {
-        toast.error("Error al enviar el email");
-        console.error("Error sending email:", error);
-        setIsSendingEmail(false);
-      }
-    })
-  );
-
-
-  // Effect to determine if there are unsaved changes
-  useEffect(() => {
-    if (!request) { // If request is not yet loaded from DB
-      setHasUnsavedChanges(false);
-      return;
-    }
-
-    const totalPriceInRequest = typeof request.price === 'number' ? request.price : 0;
-    const finalPriceInRequest = typeof request.final_price === 'number' ? request.final_price : 0;
-    const epsilon = 0.001;
-    const totalPriceChanged = Math.abs(totalGeneralUSD - totalPriceInRequest) > epsilon;
-    const finalPriceChanged = Math.abs(finalPriceUSD - finalPriceInRequest) > epsilon;
-    
-    const newHasUnsavedChanges = totalPriceChanged || finalPriceChanged;
-
-    // Detailed log for debugging what changed
-    // if (newHasUnsavedChanges) {
-    //   let changedFields = [];
-
-    //   if (totalPriceChanged) {
-    //     changedFields.push(`Total Price (USD): (DB: ${totalPriceInRequest}, Store: ${totalGeneralUSD}, Diff: ${totalGeneralUSD - totalPriceInRequest})`);
-    //   }
-    //   if (finalPriceChanged) {
-    //     changedFields.push(`Final Price (USD): (DB: ${finalPriceInRequest}, Store: ${finalPriceUSD}, Diff: ${finalPriceUSD - finalPriceInRequest})`);
-    //   }
-
-    //   console.log('[DEBUG] Unsaved Changes Detected. Fields changed:', changedFields.join('; '));
-    // } else if (hasUnsavedChanges && !newHasUnsavedChanges) {
-    //   console.log('[DEBUG] Changes have been saved or reverted.');
-    // }
-    
-    setHasUnsavedChanges(newHasUnsavedChanges);
-
-  }, [responseText, totalGeneralUSD, finalPriceUSD, request, hasUnsavedChanges]);
+  // const sendEmailMutation = useMutation(
+  //   trpc.requests.sendEmail.mutationOptions({
+  //     onSuccess: () => {
+  //       toast.success("Email enviado correctamente");
+  //       refetch(); // Refetch data to update request.email_sent status
+  //       setIsSendingEmail(false);
+  //     },
+  //     onError: (error) => {
+  //       toast.error("Error al enviar el email");
+  //       console.error("Error sending email:", error);
+  //       setIsSendingEmail(false);
+  //     }
+  //   })
+  // );
 
   useEffect(() => {
     if (requestData) {
       setRequest(requestData);
-
-      if (requestData.products && requestData.products.length > 0) {
-        setProducts(requestData.products);
-      } else {
-        setProducts([]);
-      }
-
-      const requestWithPrices = requestData;
-      
-      if (requestWithPrices.final_price !== undefined && requestWithPrices.final_price !== null) {
-        useRequestDetailStore.getState().setFinalPriceUSD(requestWithPrices.final_price);
-      } else {
-        useRequestDetailStore.getState().setFinalPriceUSD(0); // Explicitly set to 0 if null/undefined from DB
-      }
-      
-      // Assuming DB field for totalGeneralUSD is 'price'
-      if (requestWithPrices.price !== undefined && requestWithPrices.price !== null) {
-        useRequestDetailStore.getState().setTotalGeneralUSD(requestWithPrices.price);
-      } else {
-        useRequestDetailStore.getState().setTotalGeneralUSD(0); // Explicitly set to 0 if null/undefined from DB
-      }
     }
-  }, [requestData, setRequest, setProducts]);
+  }, [requestData]);
 
-
-  const handleSaveResponse = async () => {
-    setIsSaving(true);
-
-    console.log('totalGeneralUSD', totalGeneralUSD);
-    console.log('finalPriceUSD', finalPriceUSD);
-    console.log('calculated PEN: total=', getTotalGeneralPEN(), 'final=', getFinalPricePEN());
-
-    try {
-      await updateRequestMutation.mutateAsync({
-        id,
-        response: responseText,
-        price: totalGeneralUSD, // Save in USD
-        finalPrice: finalPriceUSD // Save in USD
-      });
-    } catch {
-      setIsSaving(false);
-    }
-  };
-
-  const handleSendEmail = async () => {
-    if (!request?.client?.email || !responseText.trim()) {
-      toast.warning("No hay respuesta para enviar");
+  // Effect to determine if there are unsaved changes by comparing store state with React Query data
+  useEffect(() => {
+    // Ensure both request from store and requestData from query are available
+    if (!request || !requestData) {
+      setHasUnsavedChanges(false);
       return;
     }
-    setIsSendingEmail(true);
 
+    const changedFieldsLog: Array<{
+      field: keyof PurchaseRequest;
+      oldValue: PurchaseRequest[keyof PurchaseRequest] | undefined | null;
+      newValue: PurchaseRequest[keyof PurchaseRequest] | undefined | null;
+    }> = [];
+
+    // Define which fields of PurchaseRequest to compare
+    const fieldsToCompare: (keyof PurchaseRequest)[] = ['currency', 'exchange_rate', 'price', 'final_price'];
+
+    for (const field of fieldsToCompare) {
+      const oldValue = requestData[field];
+      const newValue = request[field];
+
+      if (newValue !== oldValue) {
+        changedFieldsLog.push({
+          field,
+          oldValue: oldValue as PurchaseRequest[typeof field] | undefined | null, // Type assertion for clarity
+          newValue: newValue as PurchaseRequest[typeof field] | undefined | null, // Type assertion for clarity
+        });
+      }
+    }
+
+    const const_hasActualChanges = changedFieldsLog.length > 0;
+    setHasUnsavedChanges(const_hasActualChanges);
+
+    if (const_hasActualChanges) {
+      console.log('Request details have unsaved changes:');
+      changedFieldsLog.forEach(change => {
+        console.log(`  - ${change.field}: from '${change.oldValue}' to '${change.newValue}'`);
+      });
+    } else {
+      // Optional: Log if there are no changes, for clarity during development
+      // console.log('Request details are in sync with fetched data.');
+    }
+
+  }, [request, requestData]);
+
+  // const handleSendEmail = async () => {
+  //   if (!request?.client?.email || !responseText.trim()) {
+  //     toast.warning("No hay respuesta para enviar");
+  //     return;
+  //   }
+  //   setIsSendingEmail(true);
+
+  //   try {
+  //     await updateRequestMutation.mutateAsync({
+  //       id,
+  //       response: responseText,
+  //       price: request?.price ?? 0, 
+  //       finalPrice: request?.final_price ?? 0
+  //     });
+
+  //     await sendEmailMutation.mutateAsync({
+  //       id,
+  //       email: request.client.email,
+  //       subject: 'Respuesta a tu solicitud de cotización',
+  //       content: responseText
+  //     });
+  //   } catch {
+  //     setIsSendingEmail(false);
+  //   }
+  // };
+
+  const handleSaveChanges = async () => {
+    if (!request?.id) {
+      toast.error("Error", { description: "ID de solicitud no encontrado." });
+      return;
+    }
+    setIsSaving(true);
     try {
+      // Note: currency and exchange_rate are monitored for changes but not yet saved
+      // by this mutation. The backend trpc.requests.updateRequest needs to be updated
+      // to accept these fields. Once updated, they should be added here.
+      console.log('request1', request);
       await updateRequestMutation.mutateAsync({
-        id,
-        response: responseText,
-        price: totalGeneralUSD, // Save in USD 
-        finalPrice: finalPriceUSD // Save in USD
+        id: request.id,
+        price: request.price ?? 0,
+        finalPrice: request.final_price ?? 0,
+        currency: request.currency ?? undefined, // Temporarily removed due to linter error
+        // exchange_rate: request.exchange_rate, // Temporarily removed due to linter error
       });
-
-      // Then send the email
-      await sendEmailMutation.mutateAsync({
-        id,
-        email: request.client.email,
-        subject: 'Respuesta a tu solicitud de cotización',
-        content: responseText
-      });
-    } catch {
-      // Error handling is in the mutation options
-      setIsSendingEmail(false);
+      // On success, mutation's onSuccess (toast) and onSettled (refetch) run.
+      // The refetch will update requestData, and if the save was successful,
+      // the store (via `setRequest(requestData)`) and requestData will align,
+      // causing hasUnsavedChanges to become false.
+    } catch (error) {
+      console.error("Failed to save changes:", error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -217,34 +243,10 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
         status: newStatus
       });
     } catch {
-      // Error handling is in the mutation options
       setIsUpdatingStatus(false);
     }
   };
 
-  const emailSent = request?.email_sent || false;
-
-  // Effect to warn user if they try to leave with unsaved changes
-  useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (hasUnsavedChanges) {
-        event.preventDefault();
-        // Standard for most browsers to show a confirmation dialog
-        event.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
-      }
-    };
-
-    if (hasUnsavedChanges) {
-      window.addEventListener('beforeunload', handleBeforeUnload);
-    } else {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    }
-
-    // Cleanup listener on component unmount
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [hasUnsavedChanges]);
 
   return (
     <div className="space-y-6">
@@ -255,11 +257,28 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
           <h2 className="text-2xl font-bold tracking-tight">Detalle de pedido</h2>
         </div>
 
-        <div className="flex space-x-3">
-          {/* Email and Save Buttons */}
+        <div className="flex space-x-3 items-center">
+          {/* Save Changes Button */}
+          {hasUnsavedChanges && (
+            <Button
+              onClick={handleSaveChanges}
+              disabled={isSaving}
+              variant="default"
+              className="transition-all"
+            >
+              {isSaving ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              Guardar Cambios
+            </Button>
+          )}
+          
+          {/* Email Button */}
           <div className="flex space-x-2">
             {/* Email Dropdown */}
-            <DropdownMenu>
+            {/* <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
@@ -293,29 +312,13 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
                   WhatsApp deshabilitado
                 </DropdownMenuItem>
               </DropdownMenuContent>
-            </DropdownMenu>
+            </DropdownMenu> */}
             
             {/* Preview Drawer Component */}
             <RequestPreviewDrawer />
             
-            <Button
-              onClick={handleSaveResponse}
-              disabled={!hasUnsavedChanges || isSaving}
-              className="gap-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-medium border-0"
-            >
-              {isSaving ? (
-                <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              {isSaving ? "Guardando..." : "Guardar"}
-            </Button>
           </div>
-
-
         </div>
-
-
       </div>
 
       {requestData && requestData.status && (
@@ -329,22 +332,11 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           {requestData && <RequestDetailsCard request={requestData} />}
-          <ProductList requestId={id} initialProducts={requestData?.products} />
+          {requestData && <ProductList requestId={id} products={requestData.products} />}
         </div>
         <div className="lg:col-span-1 space-y-6">
           <TotalSummaryCard />
         </div>
-        {/* <div className="lg:col-span-1">
-          <ResponseSection
-            responseText={responseText}
-            calculations={{
-              totalUSD: totalGeneralUSD,
-              totalPEN: getTotalGeneralPEN()
-            }}
-            client={request?.client}
-            onChangeResponse={setResponseText}
-          />
-        </div> */}
       </div>
     </div>
   )
