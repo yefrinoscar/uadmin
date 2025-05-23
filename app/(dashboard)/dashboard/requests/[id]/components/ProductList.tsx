@@ -42,10 +42,10 @@ import {
   getPaginationRowModel
 } from '@tanstack/react-table'
 import { Input, InputNumber } from "@/components/ui/input"
-
+import { PurchaseRequest } from "@/trpc/api/routers/requests"
 interface ProductListProps {
   requestId: string;
-  initialProducts?: Product[];
+  products: Product[];
 }
 
 // Reusable EditableCell component with React Table pattern
@@ -188,11 +188,9 @@ const EditableCell = React.memo<EditableCellProps<Product>>(function EditableCel
   );
 })
 
-export default function ProductList({ requestId }: ProductListProps) {
-    const {
-      products,
-      setProducts
-    } = useRequestDetailStore();
+export default function ProductList({ requestId, products: initialProducts }: ProductListProps) {
+  const { request, setProducts } = useRequestDetailStore();
+  const products = request?.products ?? initialProducts;
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<{productId: string, field: string} | null>(null);
   const [autoResetPageIndex, skipAutoResetPageIndex] = useSkipPageReset();
@@ -201,175 +199,147 @@ export default function ProductList({ requestId }: ProductListProps) {
 
   // Calculate totals
   const totalProducts = products.length;
-  const totalPrice = products.reduce((sum, p) => sum + p.price, 0);
-  const totalBasePrice = products.reduce((sum, p) => sum + (p.base_price || 0), 0);
-  const totalWeight = products.reduce((sum, p) => sum + (p.weight || 0), 0);
-  const digitalProductsCount = products.filter(p => p.weight === 0).length;
 
   // Update product mutation
-  const updateProductMutationOptions = trpc.requests.updateProduct.mutationOptions({
-    onMutate: async ({ product: productInput }) => {
-      // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['requests.getById'] });
-      
-      // Snapshot the previous value
-      const previousQueryData = queryClient.getQueryData(['requests.getById']) as { products: Product[] } | undefined;
-      
-      // Separate potentially extraneous properties like imageData
-      const { ...productDataForState } = productInput;
-      
-      // For new products
-      if (!products.some(p => p.id === productInput.id)) {
-        // Ensure the new product conforms to the Product type
-        const newProduct = { 
-          ...productDataForState, 
-          id: productInput.id || uuidv4(), 
-          price: productDataForState.price || 0, 
-          base_price: productDataForState.base_price || 0, 
-          weight: productDataForState.weight || 0, 
-        } as Product;
+  const updateProductMutation = useMutation(
+    trpc.requests.updateProduct.mutationOptions({
+      onMutate: async ({ product: productInput }) => {
+        // Cancel any outgoing refetches
+        await queryClient.cancelQueries({ queryKey: ['requests.getById'] });
         
-        const updatedProducts = [...products, newProduct];
+        // Snapshot the previous value
+        const previousQueryData = queryClient.getQueryData(trpc.requests.getById.queryKey({ id: requestId })) as PurchaseRequest;
+        console.log(previousQueryData);
+        
+        
+        // Separate potentially extraneous properties like imageData
+        const { imageData, ...productDataForState } = productInput;
+
+        // For new products
+        if (!products.some(p => p.id === productInput.id)) {
+          // Ensure the new product conforms to the Product type
+          const newProduct = { 
+            ...productDataForState, 
+            id: productInput.id || uuidv4(), 
+            price: productDataForState.price || 0, 
+            base_price: productDataForState.base_price || 0, 
+            weight: productDataForState.weight || 0, 
+          } as Product;
+          
+          const updatedProducts = [...previousQueryData.products, newProduct];
+          setProducts(updatedProducts);
+          
+          queryClient.setQueryData(['requests.getById'], (old: any) => {
+            if (!old) return old;
+            return {
+              ...old,
+              products: [...(old.products || []), newProduct]
+            };
+          });
+          
+          return { previousProducts: previousQueryData.products, addedProduct: newProduct };
+        } 
+        // For existing products
+        else {
+          const updatedProducts = products.map(p => 
+            p.id === productInput.id ? { ...p, ...productDataForState } as Product : p 
+          );
+          
+          setProducts(updatedProducts);
+
+          
+          queryClient.setQueryData(['requests.getById'], (old: any) => {
+            if (!old) return old;
+            return {
+              ...old,
+              products: (old.products || []).map((p: Product) => 
+                p.id === productInput.id ? { ...p, ...productDataForState } as Product : p 
+              )
+            };
+          });
+          
+          return { previousProducts: previousQueryData.products, updatedProducts };
+        }
+      },
+      onError: (error, { product: productInput }, context) => {
+        // Revert query cache to the previous state
+        if (context?.previousProducts) {
+          queryClient.setQueryData(['requests.getById'], context.previousProducts);
+        }
+        
+        // Revert local Zustand store state
+        if (context?.previousProducts) { 
+          setProducts(context.previousProducts);
+        } else {
+          const currentProductsFromStore = useRequestDetailStore.getState().products;
+          const newFilteredProducts = currentProductsFromStore.filter((p: Product) => p.id !== productInput.id);
+          setProducts(newFilteredProducts);
+        }
+        toast.error(`Error al actualizar el producto: ${error.message}`);
+      },
+      onSuccess: () => {
+        // Clear editing state and data
+        setEditingCell(null);
+        
+        // No toast for success
+      },
+      onSettled: () => {
+        // Refetch to ensure server state
+        queryClient.invalidateQueries({ queryKey: ['requests.getById'] });
+      }
+    })
+  );
+
+  const deleteProductMutation = useMutation(
+    trpc.requests.deleteSingleProduct.mutationOptions({
+      onMutate: async ({ id }) => {
+        // Cancel any outgoing refetches
+        await queryClient.cancelQueries({ queryKey: ['requests.getById'] });
+        
+        // Snapshot the previous value
+        const previousData = queryClient.getQueryData(['requests.getById']);
+        
+        const prevProducts = products;
+        const deletedProduct = products.find((p) => p.id === id);
+        const updatedProducts = products.filter((p) => p.id !== id);
         setProducts(updatedProducts);
         
-        // Recalculate totals
-        const totalPrice = updatedProducts.reduce((sum, p) => sum + p.price, 0);
-        const totalBasePrice = updatedProducts.reduce((sum, p) => sum + (p.base_price || 0), 0);
-        const totalWeight = updatedProducts.reduce((sum, p) => sum + (p.weight || 0), 0);
-        
-        const store = useRequestDetailStore.getState();
-        store.setBasePrice(totalBasePrice);
-        store.setWeight(totalWeight);
-        
+        // Optimistically update the query data
         queryClient.setQueryData(['requests.getById'], (old: any) => {
           if (!old) return old;
           return {
             ...old,
-            products: [...(old.products || []), newProduct]
+            products: (old.products || []).filter((p: Product) => p.id !== id)
           };
         });
         
-        return { previousProducts: previousQueryData, addedProduct: newProduct, totalPrice, totalBasePrice, totalWeight };
-      } 
-      // For existing products
-      else {
-        const updatedProducts = products.map(p => 
-          p.id === productInput.id ? { ...p, ...productDataForState } as Product : p 
-        );
+        return { previousData, prevProducts, deletedProduct };
+      },
+      onError: (error, { /* id of product being deleted */ }, context) => {
+        // Revert query cache to the previous state
+        if (context?.previousData) {
+          queryClient.setQueryData(['requests.getById'], context.previousData);
+        }
         
-        setProducts(updatedProducts);
-        
-        const totalPrice = updatedProducts.reduce((sum, p) => sum + p.price, 0);
-        const totalBasePrice = updatedProducts.reduce((sum, p) => sum + (p.base_price || 0), 0);
-        const totalWeight = updatedProducts.reduce((sum, p) => sum + (p.weight || 0), 0);
-        
-        const store = useRequestDetailStore.getState();
-        store.setBasePrice(totalBasePrice);
-        store.setWeight(totalWeight);
-        
-        queryClient.setQueryData(['requests.getById'], (old: any) => {
-          if (!old) return old;
-          return {
-            ...old,
-            products: (old.products || []).map((p: Product) => 
-              p.id === productInput.id ? { ...p, ...productDataForState } as Product : p 
-            )
-          };
-        });
-        
-        return { previousProducts: previousQueryData, updatedProducts, totalPrice, totalBasePrice, totalWeight };
+        // Revert local Zustand store state
+        if (context?.deletedProduct) {
+          // If we have the specific product that was deleted, add it back to the current store state
+          const currentProductsFromStore = useRequestDetailStore.getState().products;
+          const revertedProducts = [...currentProductsFromStore, context.deletedProduct as Product];
+          setProducts(revertedProducts);
+        } else if (context?.prevProducts) {
+          // Otherwise, if we have the snapshot of the entire product list before deletion, use that
+          setProducts(context.prevProducts as Product[]);
+        }
+        toast.error(`Error al eliminar el producto: ${error.message}`);
+      },
+      onSettled: () => {
+        setDeletingProductId(null);
+        // Refetch to ensure server state
+        queryClient.invalidateQueries({ queryKey: ['requests.getById'] });
       }
-    },
-    onError: (error, { product: productInput }, context) => {
-      // Revert query cache to the previous state
-      if (context?.previousProducts) {
-        queryClient.setQueryData(['requests.getById'], context.previousProducts);
-      }
-      
-      // Revert local Zustand store state
-      if (context?.previousProducts?.products) { 
-        setProducts(context.previousProducts.products);
-      } else {
-        const currentProductsFromStore = useRequestDetailStore.getState().products;
-        const newFilteredProducts = currentProductsFromStore.filter((p: Product) => p.id !== productInput.id);
-        setProducts(newFilteredProducts);
-      }
-      toast.error(`Error al actualizar el producto: ${error.message}`);
-    },
-    onSuccess: () => {
-      // Clear editing state and data
-      setEditingCell(null);
-      
-      // No toast for success
-    },
-    onSettled: () => {
-      // Refetch to ensure server state
-      queryClient.invalidateQueries({ queryKey: ['requests.getById'] });
-    }
-  });
-
-  const updateProductMutation = useMutation(updateProductMutationOptions);
-
-  const deleteProductMutationOptions = trpc.requests.deleteSingleProduct.mutationOptions({
-    onMutate: async ({ id }) => {
-      // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['requests.getById'] });
-      
-      // Snapshot the previous value
-      const previousData = queryClient.getQueryData(['requests.getById']);
-      
-      const prevProducts = products;
-      const deletedProduct = products.find((p) => p.id === id);
-      const updatedProducts = products.filter((p) => p.id !== id);
-      setProducts(updatedProducts);
-      
-      // Recalculate totals
-      const totalPrice = updatedProducts.reduce((sum, p) => sum + p.price, 0);
-      const totalBasePrice = updatedProducts.reduce((sum, p) => sum + (p.base_price || 0), 0);
-      const totalWeight = updatedProducts.reduce((sum, p) => sum + (p.weight || 0), 0);
-      
-      // Update store with base price and weight
-      const store = useRequestDetailStore.getState();
-      store.setBasePrice(totalBasePrice);
-      store.setWeight(totalWeight);
-      
-      // Optimistically update the query data
-      queryClient.setQueryData(['requests.getById'], (old: any) => {
-        if (!old) return old;
-        return {
-          ...old,
-          products: (old.products || []).filter((p: Product) => p.id !== id)
-        };
-      });
-      
-      return { previousData, prevProducts, deletedProduct, totalPrice, totalBasePrice, totalWeight };
-    },
-    onError: (error, { /* id of product being deleted */ }, context) => {
-      // Revert query cache to the previous state
-      if (context?.previousData) {
-        queryClient.setQueryData(['requests.getById'], context.previousData);
-      }
-      
-      // Revert local Zustand store state
-      if (context?.deletedProduct) {
-        // If we have the specific product that was deleted, add it back to the current store state
-        const currentProductsFromStore = useRequestDetailStore.getState().products;
-        const revertedProducts = [...currentProductsFromStore, context.deletedProduct as Product];
-        setProducts(revertedProducts);
-      } else if (context?.prevProducts) {
-        // Otherwise, if we have the snapshot of the entire product list before deletion, use that
-        setProducts(context.prevProducts as Product[]);
-      }
-      toast.error(`Error al eliminar el producto: ${error.message}`);
-    },
-    onSettled: () => {
-      setDeletingProductId(null);
-      // Refetch to ensure server state
-      queryClient.invalidateQueries({ queryKey: ['requests.getById'] });
-    }
-  });
-
-  const deleteProductMutation = useMutation(deleteProductMutationOptions);
+    })
+  );
 
   // Handle adding new product
   const handleUpdateProduct = async (product: Product) => {
@@ -632,12 +602,12 @@ export default function ProductList({ requestId }: ProductListProps) {
         setEditingCell(null);
       },
       // Function to only update the UI (optimistic update)
-      updateUIOnly: (productId: string, field: string, value: any) => {
+      updateUIOnly: (productId: string, field: string, value: any) => {        
         // Skip page index reset until after next rerender
         skipAutoResetPageIndex();
         
         // First, find the product that needs to be updated
-        const currentProducts = useRequestDetailStore.getState().products;
+        const currentProducts = useRequestDetailStore.getState().request?.products || [];
         const productToUpdate = currentProducts.find(p => p.id === productId);
         
         if (!productToUpdate) return; // Product not found
@@ -651,28 +621,16 @@ export default function ProductList({ requestId }: ProductListProps) {
           product.id === productId ? updatedProduct : product
         );
         
-        // Update local state
+        // Update state
         setProducts(updatedProducts);
-        
-        // Also update the store state
-        useRequestDetailStore.getState().setProducts(updatedProducts);
-        
-        // Recalculate totals
-        const totalPrice = updatedProducts.reduce((sum, p) => sum + p.price, 0);
-        const totalBasePrice = updatedProducts.reduce((sum, p) => sum + (p.base_price || 0), 0);
-        const totalWeight = updatedProducts.reduce((sum, p) => sum + (p.weight || 0), 0);
-        
-        const store = useRequestDetailStore.getState();
-        store.setBasePrice(totalBasePrice);
-        store.setWeight(totalWeight);
-        
+      
         // Close the edit mode
         setEditingCell(null);
       },
       // Function to update the server (debounced)
       updateData: (productId: string, field: string, value: any) => {
         // Find the product that needs to be updated
-        const currentProducts = useRequestDetailStore.getState().products;
+        const currentProducts = useRequestDetailStore.getState().request?.products || [];
         const productToUpdate = currentProducts.find(p => p.id === productId);
         
         if (!productToUpdate) return; // Product not found
@@ -700,10 +658,10 @@ export default function ProductList({ requestId }: ProductListProps) {
             <p>Haz clic en Agregar producto para comenzar.</p>
           </div>
         ) : (
-          <ScrollArea className="max-h-[400px] min-h-[250px]">
+          <ScrollArea className="min-h-[200px]">
             <div className="w-full">
               <Table className="border-collapse w-full">
-                <TableHeader className="bg-slate-100 dark:bg-slate-800/50 sticky top-0 z-10">
+                <TableHeader className=" sticky top-0 z-10">
                   {table.getHeaderGroups().map(headerGroup => (
                     <TableRow key={headerGroup.id} className="border-b border-border">
                       {headerGroup.headers.map(header => (
@@ -750,12 +708,6 @@ export default function ProductList({ requestId }: ProductListProps) {
       <CardFooter className="px-6 py-4 border-t flex justify-between items-center">
         <div className="text-sm">
           <div className="font-medium">{totalProducts} productos</div>
-          <div className="text-muted-foreground">
-            Base: <span className="font-medium">${totalBasePrice.toFixed(2)}</span> | 
-            Total: <span className="font-medium">${totalPrice.toFixed(2)}</span> | 
-            Peso: <span className="font-medium">{totalWeight.toFixed(2)} kg</span>
-            {digitalProductsCount > 0 && ` (${digitalProductsCount} digital)`}
-          </div>
         </div>
         <div className="flex gap-2">
           <AddProductDialog

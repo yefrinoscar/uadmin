@@ -92,32 +92,13 @@ export function AddProductDialog({
   const profitAmount = form.watch("profit_amount")
   const tax = form.watch("tax")
 
-  // Memoize calculatedFinalPrice to prevent unnecessary recalculations
-  const calculatedFinalPrice = React.useMemo(() => {
-    const numericBasePrice = Number(basePrice) || 0;
-    const numericProfitAmount = Number(profitAmount) || 0;
-    const numericTax = Number(tax) || 0;
-    const currentExchangeRate = Number(exchangeRate) || 3.7; // Fallback if not loaded
-
-    if (isNaN(numericBasePrice)) return 0;
-
-    const basePricePEN = numericBasePrice * currentExchangeRate;
-    const subtotalPEN = basePricePEN + numericProfitAmount;
-    const finalPriceWithTaxPEN = subtotalPEN * (1 + numericTax / 100);
-    return parseFloat(finalPriceWithTaxPEN.toFixed(2));
-  }, [basePrice, profitAmount, tax, exchangeRate]);
 
   const onSubmit = (data: ProductFormData) => {
-    if (calculatedFinalPrice === undefined || calculatedFinalPrice === null || isNaN(calculatedFinalPrice)) {
-      console.error("calculatedFinalPrice is not a valid number", calculatedFinalPrice);
-      // Optionally, show an error to the user
-      return;
-    }
 
     const product: Product = {
       id: uuidv4(),
       title: data.title,
-      price: calculatedFinalPrice, // Use the price with profit and tax included
+      price: Number(basePrice) + ((Number(basePrice) * Number(tax)) / 100), // Use the price with profit and tax included
       weight: data.weight,
       description: data.description || "",
       source: (data.source?.toLowerCase() || "manual") as "amazon" | "ebay" | "jomashop" | "manual",
@@ -126,8 +107,10 @@ export function AddProductDialog({
       request_id: "",  // This will be set by the parent component
       base_price: data.base_price,
       profit_amount: data.profit_amount,
-      tax: data.tax,
+      tax: Number(tax),
     };
+
+    console.log(product)
 
     // Set the calculator to disable profit since it's already included in the product price
     setCalculations({
