@@ -93,10 +93,7 @@ const PurchaseRequestListSchema = z.object({
   response: z.string().optional().nullable(),
   url: z.string().url().optional().nullable(),
   email_sent: z.boolean().optional().nullable(),
-  whatsapp_sent: z.boolean().optional().nullable(),
-  sub_total: z.number().optional().nullable().default(0),
-  weight: z.number().optional().nullable().default(0),
-  profit: z.number().optional().nullable().default(0)
+  whatsapp_sent: z.boolean().optional().nullable()
 });
 
 const CreateRequestSchema = z.object({
@@ -117,9 +114,8 @@ function formatEmailContent(content: string): string {
     .replace(/\n/g, '<br>')
     .replace(/ {2,}/g, match => '&nbsp;'.repeat(match.length));
 }
-
 export type PurchaseRequest = z.infer<typeof PurchaseRequestSchema>
-export type PurchaseRequestList = Omit<PurchaseRequest, 'products'>
+export type PurchaseRequestList = Omit<PurchaseRequest, 'products' | 'sub_total' | 'weight' | 'profit'>
 
 export type RequestFilter = z.infer<typeof FiltersSchema>
 
@@ -153,10 +149,7 @@ export const requestsRouter = router({
           assigned_user:users(id, name),
           url,
           email_sent,
-          whatsapp_sent,
-          sub_total,
-          weight,
-          profit
+          whatsapp_sent
         `, { count: 'exact' }) // Request total count for filtered query
         .order("created_at", { ascending: false })
         .range(offset, offset + pageSize - 1);
@@ -217,9 +210,6 @@ export const requestsRouter = router({
           url: item.url,
           email_sent: item.email_sent,
           whatsapp_sent: item.whatsapp_sent,
-          sub_total: item.sub_total,
-          weight: item.weight,
-          profit: item.profit
         };
       }).filter(Boolean) as PurchaseRequestList[];
 
