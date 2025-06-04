@@ -2,7 +2,7 @@
 
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Edit, Trash2, Copy, CircleDashed, Zap } from "lucide-react"
+import { Edit, Trash2, Copy, CircleDashed, Zap, Clock, XCircle } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import type { Promotion } from "@/types/promotion"
@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils"
 interface PromotionCardProps {
   promotion: Promotion
   isActive: boolean
-  isOver?: boolean
   onClick?: () => void
   onEdit: (promotion: Promotion) => void
   onDelete: (promotion: Promotion) => Promise<void>
@@ -24,10 +23,21 @@ interface PromotionCardProps {
   isPublic?: boolean
 }
 
+// Helper function to get promotion status
+function getPromotionStatus(promotion: Promotion) {
+  const now = new Date()
+  const startDate = new Date(promotion.start_date)
+  const endDate = new Date(promotion.end_date)
+  
+  if (!promotion.active) return { status: 'inactive', color: 'gray', icon: CircleDashed, label: 'Inactiva' }
+  if (now < startDate) return { status: 'pending', color: 'blue', icon: Clock, label: 'Pendiente' }
+  if (now > endDate) return { status: 'expired', color: 'red', icon: XCircle, label: 'Expirada' }
+  return { status: 'active', color: 'green', icon: Zap, label: 'Activa' }
+}
+
 export function PromotionCard({ 
   promotion, 
   isActive,
-  isOver = false,
   onClick,
   onEdit, 
   onDelete, 
@@ -39,37 +49,36 @@ export function PromotionCard({
 }: PromotionCardProps) {
   const startDate = new Date(promotion.start_date)
   const endDate = new Date(promotion.end_date)
-  const isExpired = endDate < new Date()
-  const hasStarted = startDate <= new Date()
+  const now = new Date()
+  const statusInfo = getPromotionStatus(promotion)
+  const StatusIcon = statusInfo.icon
+
+  // Calculate if promotion is currently live (regardless of active flag)
+  const isCurrentlyLive = now >= startDate && now <= endDate && promotion.active
 
   return (
     <Card 
       className={cn(
-        "transition-all duration-200 overflow-hidden cursor-pointer",
-        isActive ? "" : "",
-        isOver ? "border-primary border-2 bg-primary/5 scale-105" : "",
-        isExpired ? "opacity-70" : "",
-        promotion.is_main && ""
+        "transition-all duration-200 overflow-hidden cursor-pointer hover:shadow-lg",
+        isCurrentlyLive ? "ring-2 ring-green-500/20 bg-green-50/50" : "",
+        statusInfo.status === 'expired' ? "opacity-70" : "",
+        promotion.is_main ? "border-yellow-500 bg-yellow-50/50" : ""
       )}
       onClick={onClick}
     >
-      {isOver && (
-        <div className="bg-primary text-primary-foreground text-xs text-center py-1 font-medium">
-          Soltar para reemplazar
-        </div>
-      )}
-      
-      <div className="p-4">
+      <div className="p-6">
         <div className="flex items-start gap-4">
-          {/* Icon */}
+          {/* Status Icon */}
           <div 
-            className="w-12 h-12 rounded-full flex items-center justify-center shrink-0"
-          >
-            {promotion.active ? (
-              <Zap className="w-6 h-6" />
-            ) : (
-              <CircleDashed className="w-6 h-6" />
+            className={cn(
+              "w-12 h-12 rounded-full flex items-center justify-center shrink-0",
+              statusInfo.color === 'green' ? "bg-green-100 text-green-600" :
+              statusInfo.color === 'blue' ? "bg-blue-100 text-blue-600" :
+              statusInfo.color === 'red' ? "bg-red-100 text-red-600" :
+              "bg-gray-100 text-gray-600"
             )}
+          >
+            <StatusIcon className="w-6 h-6" />
           </div>
 
           {/* Content */}
@@ -79,114 +88,138 @@ export function PromotionCard({
               <div className="flex items-center gap-2">
                 <div className={cn(
                   "h-2 w-2 rounded-full",
-                  isExpired ? "bg-red-500" :
-                  !hasStarted ? "bg-zinc-400" :
-                  "bg-emerald-500"
+                  statusInfo.color === 'green' ? "bg-green-500" :
+                  statusInfo.color === 'blue' ? "bg-blue-500" :
+                  statusInfo.color === 'red' ? "bg-red-500" :
+                  "bg-gray-400"
                 )} />
                 <span className="text-xs font-medium text-muted-foreground">
-                  {isExpired ? "Expirada" : !hasStarted ? "Pendiente" : "Activa"}
+                  {statusInfo.label}
                 </span>
               </div>
+              
+              {isCurrentlyLive && (
+                <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">
+                  En Vivo
+                </span>
+              )}
+              
               {promotion.is_main && (
-                <span className="bg-underla-50 text-underla-700 text-xs px-2 py-0.5 rounded-full font-medium">
+                <span className="bg-yellow-100 text-yellow-700 text-xs px-2 py-0.5 rounded-full font-medium">
                   Principal
                 </span>
               )}
             </div>
 
-            <h3 className="text-base font-semibold mb-1">{promotion.title}</h3>
-            <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+            <h3 className="text-base font-semibold mb-1 line-clamp-1">{promotion.title}</h3>
+            <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
               {promotion.description}
             </p>
 
             {/* Dates */}
-            <div className="grid grid-cols-2 gap-4 text-sm p-3 bg-muted/10 rounded-lg mb-4">
-              <div>
-                <div className="text-xs font-medium text-muted-foreground mb-1">Inicio</div>
-                <div className="font-medium">{format(startDate, "d 'de' MMMM, yyyy", { locale: es })}</div>
-                <div className="text-xs text-muted-foreground">{format(startDate, "HH:mm")}</div>
+            <div className="grid grid-cols-1 gap-3 text-sm p-3 bg-muted/30 rounded-lg mb-4">
+              <div className="flex justify-between items-center">
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground">Inicio</div>
+                  <div className="font-medium">{format(startDate, "d MMM yyyy", { locale: es })}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs font-medium text-muted-foreground">Fin</div>
+                  <div className="font-medium">{format(endDate, "d MMM yyyy", { locale: es })}</div>
+                </div>
               </div>
-              <div>
-                <div className="text-xs font-medium text-muted-foreground mb-1">Fin</div>
-                <div className="font-medium">{format(endDate, "d 'de' MMMM, yyyy", { locale: es })}</div>
-                <div className="text-xs text-muted-foreground">{format(endDate, "HH:mm")}</div>
+              
+              {/* Duration indicator */}
+              <div className="text-xs text-muted-foreground text-center">
+                {now < startDate ? (
+                  `Inicia en ${Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))} días`
+                ) : now > endDate ? (
+                  `Expiró hace ${Math.ceil((now.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24))} días`
+                ) : (
+                  `Activa por ${Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))} días más`
+                )}
               </div>
+            </div>
+
+            {/* Condition info */}
+            <div className="text-xs text-muted-foreground mb-4 p-2 bg-muted/20 rounded">
+              <strong>Condición:</strong> {promotion.condition_type === 'category' ? 'Categoría' : 'Tags'} - {promotion.condition_value}
             </div>
 
             {/* Actions */}
             {!isPublic && (
-              <div className="flex items-center justify-end gap-2">
-                {isActive && !isExpired && !promotion.is_main && (
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1">
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEdit(promotion);
+                    }}
+                    disabled={isPending}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  
+                  {showDuplicate && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDuplicate(promotion);
+                            }}
+                            disabled={isPending}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Duplicar promoción</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                  
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    className="text-destructive hover:text-destructive h-8 w-8 p-0" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(promotion);
+                    }}
+                    disabled={isPending}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {isCurrentlyLive && !promotion.is_main && onSetMain && (
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 text-xs border-underla text-underla hover:bg-underla hover:text-white"
+                    className="text-xs border-yellow-500 text-yellow-700 hover:bg-yellow-50"
                     onClick={(e) => {
                       e.stopPropagation()
-                      onSetMain?.(promotion)
+                      onSetMain(promotion)
                     }}
-                    disabled={isPending || isExpired}
+                    disabled={isPending}
                   >
                     Hacer Principal
                   </Button>
                 )}
-                {showDuplicate && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDuplicate(promotion);
-                          }}
-                          disabled={isPending}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Duplicar promoción</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit(promotion);
-                  }}
-                  disabled={isPending}
-                >
-                  <Edit className="h-4 w-4" />
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  className="text-destructive hover:text-destructive" 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(promotion);
-                  }}
-                  disabled={isPending}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
               </div>
             )}
           </div>
         </div>
       </div>
-
-      {/* Only show admin actions if not public */}
-      {!isPublic && (
-        <div className="absolute top-2 right-2 flex items-center gap-2">
-          {/* ... existing action buttons ... */}
-        </div>
-      )}
     </Card>
   )
 }

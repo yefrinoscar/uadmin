@@ -13,7 +13,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { Promotion } from "@/types/promotion"
-import { DateTimePicker } from "@/components/ui/date-time-picker"
 import { toast } from "sonner"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -407,10 +406,12 @@ export function PromotionFormDialog({
                     <FormItem>
                       <FormLabel>Fecha de inicio</FormLabel>
                       <FormControl>
-                        <DateTimePicker
-                          date={field.value ? new Date(field.value) : undefined}
-                          setDate={(date) => {
-                            if (date) {
+                        <Input
+                          type="datetime-local"
+                          value={field.value ? new Date(field.value).toISOString().slice(0, 16) : ""}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              const date = new Date(e.target.value)
                               field.onChange(date.toISOString())
                               // Check end_date and update if needed
                               const endDate = form.getValues('end_date')
@@ -421,6 +422,7 @@ export function PromotionFormDialog({
                               }
                             }
                           }}
+                          className="w-full"
                         />
                       </FormControl>
                       <FormMessage />
@@ -435,10 +437,12 @@ export function PromotionFormDialog({
                     <FormItem>
                       <FormLabel>Fecha de fin</FormLabel>
                       <FormControl>
-                        <DateTimePicker
-                          date={field.value ? new Date(field.value) : undefined}
-                          setDate={(date) => {
-                            if (date) {
+                        <Input
+                          type="datetime-local"
+                          value={field.value ? new Date(field.value).toISOString().slice(0, 16) : ""}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              const date = new Date(e.target.value)
                               const startDate = new Date(form.getValues('start_date'))
                               if (date <= startDate) {
                                 toast.error("La fecha de fin debe ser posterior a la fecha de inicio")
@@ -447,8 +451,9 @@ export function PromotionFormDialog({
                               field.onChange(date.toISOString())
                             }
                           }}
-                          minDate={new Date(form.getValues('start_date'))}
+                          min={form.getValues('start_date') ? new Date(form.getValues('start_date')).toISOString().slice(0, 16) : undefined}
                           disabled={!form.getValues('start_date')}
+                          className="w-full"
                         />
                       </FormControl>
                       <FormMessage />

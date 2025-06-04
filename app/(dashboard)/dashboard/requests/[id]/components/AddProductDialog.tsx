@@ -112,11 +112,10 @@ export function AddProductDialog({
 
     console.log(product)
 
-    // Set the calculator to disable profit since it's already included in the product price
-    setCalculations({
-      ...calculations,
-      disableProfit: true
-    });
+    // Update calculations if needed
+    if (calculations) {
+      setCalculations(calculations);
+    }
 
     onAddProduct(product);
     setOpen(false);

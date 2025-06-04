@@ -5,12 +5,10 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { format } from "date-fns"
-import { es } from "date-fns/locale"
 import { useTRPC } from "@/trpc/client"
 import { useMutation } from "@tanstack/react-query"
-import { Sale } from "@/types/sale"
+import type { Sale } from "@/types/sale"
 
-import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -20,6 +18,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import {
   Form,
   FormControl,
@@ -29,7 +31,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -37,9 +38,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Calendar } from "@/components/ui/calendar"
-import { CalendarIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // Form schema
@@ -128,7 +126,7 @@ export function SaleFormDialog({ sale, onSuccess, trigger }: SaleFormDialogProps
         if (onSuccess) onSuccess()
         form.reset()
       },
-      onError: (error) => {
+      onError: (error: any) => {
         console.error("Error creating sale:", error)
       }
     })
@@ -141,7 +139,7 @@ export function SaleFormDialog({ sale, onSuccess, trigger }: SaleFormDialogProps
         if (onSuccess) onSuccess()
         form.reset()
       },
-      onError: (error) => {
+      onError: (error: any) => {
         console.error("Error updating sale:", error)
       }
     })
@@ -266,37 +264,21 @@ export function SaleFormDialog({ sale, onSuccess, trigger }: SaleFormDialogProps
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>Fecha de compra</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full pl-3 text-left font-normal",
-                              !field.value && "text-muted-foreground"
-                            )}
-                          >
-                            {field.value ? (
-                              format(field.value, "PPP", { locale: es })
-                            ) : (
-                              <span>Seleccionar fecha</span>
-                            )}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          disabled={(date) =>
-                            date > new Date() || date < new Date("1900-01-01")
+                    <FormControl>
+                      <Input
+                        type="date"
+                        value={field.value ? format(field.value, "yyyy-MM-dd") : ""}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            field.onChange(new Date(e.target.value))
+                          } else {
+                            field.onChange(undefined)
                           }
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                        }}
+                        max={format(new Date(), "yyyy-MM-dd")}
+                        className="w-full"
+                      />
+                    </FormControl>
                     <FormDescription>Fecha en que se compró el producto</FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -310,37 +292,21 @@ export function SaleFormDialog({ sale, onSuccess, trigger }: SaleFormDialogProps
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>Fecha de venta</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full pl-3 text-left font-normal",
-                              !field.value && "text-muted-foreground"
-                            )}
-                          >
-                            {field.value ? (
-                              format(field.value, "PPP", { locale: es })
-                            ) : (
-                              <span>Seleccionar fecha</span>
-                            )}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          disabled={(date) =>
-                            date > new Date() || date < new Date("1900-01-01")
+                    <FormControl>
+                      <Input
+                        type="date"
+                        value={field.value ? format(field.value, "yyyy-MM-dd") : ""}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            field.onChange(new Date(e.target.value))
+                          } else {
+                            field.onChange(undefined)
                           }
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                        }}
+                        max={format(new Date(), "yyyy-MM-dd")}
+                        className="w-full"
+                      />
+                    </FormControl>
                     <FormDescription>Fecha en que se vendió el producto</FormDescription>
                     <FormMessage />
                   </FormItem>

@@ -3,6 +3,11 @@
 import { create } from "zustand"
 import { toast } from "sonner"
 import { Product, PurchaseRequest } from "@/trpc/api/routers/requests"
+import { 
+  calculatePricingDetails, 
+  calculateTotalShippingCost,
+  type PricingCalculationResult 
+} from "@/utils/calculations"
 
 interface Amount {
   PEN: number;
@@ -21,7 +26,7 @@ interface RequestDetailState {
   finalPrice: Amount
   exchangeRate: number
 
-  calculations: any
+  calculations: PricingCalculationResult | null
   finalPriceDisplayCurrency: "PEN" | "USD"
 
   // Actions
@@ -31,11 +36,36 @@ interface RequestDetailState {
   removeProduct: (productId: string) => void
   setShipping: (shipping: number) => void
   setTotal: (total: number) => void
-  setCalculations: (calculations: any) => void
+  setCalculations: (calculations: PricingCalculationResult | null) => void
   setWeight: (weight: number) => void
   setExchangeRate: (rate: number) => void
   setProfit: (profit: number) => void
   setFinalPrice: (finalPrice: number) => void
+  
+  // Computed actions
+  recalculateShipping: () => void
+  recalculatePricing: () => void
+}
+
+/**
+ * Helper function to recalculate request totals based on products
+ */
+function recalculateRequestTotals(
+  products: Product[], 
+  shipping: number, 
+  exchangeRate: number
+) {
+  const subTotal = products.reduce((sum: number, product: Product) => sum + (product.price || 0), 0)
+  const weight = products.reduce((sum: number, product: Product) => sum + (product.weight || 0), 0)
+  const profit = products.reduce((sum: number, product: Product) => sum + (product.profit_amount || 0), 0)
+  
+  return {
+    subTotal,
+    weight,
+    profit: profit / exchangeRate,
+    price: subTotal + shipping + (profit / exchangeRate),
+    final_price: subTotal + shipping + (profit / exchangeRate)
+  }
 }
 
 export const useRequestDetailStore = create<RequestDetailState>((set, get) => ({
@@ -59,62 +89,107 @@ export const useRequestDetailStore = create<RequestDetailState>((set, get) => ({
   // Actions
   setRequest: (request) => {
     const products = request.products
+    const exchangeRate = request.exchange_rate ?? 3.7
+    const finalPrice = request.final_price ?? 0
     const subTotal = products.reduce((sum: number, product: Product) => sum + (product.price || 0), 0)
     const weight = products.reduce((sum: number, product: Product) => sum + (product.weight || 0), 0)
-    const profit = products.reduce((sum: number, product: Product) => sum + (product.profit_amount || 0), 0)
-    const exchange_rate = request.exchange_rate ?? 3.7
-    const final_price = request.final_price ?? 0
+
+    // Calculate comprehensive pricing details
+    const { totalCosts } = calculatePricingDetails({
+      basePrice: subTotal,
+      weight: weight,
+      exchangeRate,
+      marginPEN: 0, // No additional margin for request calculations
+      taxPercentage: 0 // Tax handled separately in requests
+    })
+
+    // Recalculate totals
+    const totals = recalculateRequestTotals(products, totalCosts, exchangeRate)
+
+
 
     set((state) => ({
       request: {
         ...request,
-        weight,
-        sub_total: subTotal,
-        profit: profit / exchange_rate,
-        price: request.price ?? subTotal + state.shipping + profit,
-        final_price,
-        exchange_rate: exchange_rate
-      }
+        weight: totals.weight,
+        sub_total: totals.subTotal,
+        profit: totals.profit,
+        price: totals.price,
+        final_price: finalPrice,
+        exchange_rate: exchangeRate
+      },
+      shipping: totalCosts
     }))
   },
 
   setProducts: (products) => {
-    // Recalculate totals when products change
-    const subTotal = products.reduce((sum: number, product: Product) => sum + (product.price || 0), 0)
-    const weight = products.reduce((sum: number, product: Product) => sum + (product.weight || 0), 0)
-    const profit = products.reduce((sum: number, product: Product) => sum + (product.profit_amount || 0), 0)
+    const state = get()
+    const exchangeRate = state.request?.exchange_rate ?? 3.7
+    
+    // Automatically recalculate shipping based on new products
+    const automaticShipping = calculateTotalShippingCost(products)
+    
+    // Recalculate totals
+    const totals = recalculateRequestTotals(products, automaticShipping, exchangeRate)
+    
+    // Calculate comprehensive pricing details
+    const pricingCalculations = calculatePricingDetails({
+      basePrice: totals.subTotal,
+      weight: totals.weight,
+      exchangeRate,
+      marginPEN: 0,
+      taxPercentage: 0
+    })
        
     set((state) => ({
       request: {
         ...state.request,
-        weight,
-        sub_total: subTotal,
-        profit: profit / (state.request?.exchange_rate ?? 3.7),
-        price: subTotal + state.shipping + profit,
-        final_price: subTotal + state.shipping + profit,
-        exchange_rate: state.request?.exchange_rate,
+        weight: totals.weight,
+        sub_total: totals.subTotal,
+        profit: totals.profit,
+        price: totals.price,
+        final_price: totals.final_price,
+        exchange_rate: exchangeRate,
         products
-      } as PurchaseRequest
+      } as PurchaseRequest,
+      shipping: automaticShipping,
+      calculations: pricingCalculations
     }))
   },
 
   removeProduct: (productId) => {
     set((state) => {
       const products = state.request?.products.filter(product => product.id !== productId) ?? []
-      const subTotal = products.reduce((sum: number, p: Product) => sum + (p.price || 0), 0)
-      const weight = products.reduce((sum: number, p: Product) => sum + (p.weight || 0), 0)
-      const profit = products.reduce((sum: number, p: Product) => sum + (p.profit_amount || 0), 0)
+      const exchangeRate = state.request?.exchange_rate ?? 3.7
+      
+      // Automatically recalculate shipping based on remaining products
+      const automaticShipping = calculateTotalShippingCost(products)
+      
+      // Recalculate totals
+      const totals = recalculateRequestTotals(products, automaticShipping, exchangeRate)
+      
+      // Calculate comprehensive pricing details
+      const pricingCalculations = calculatePricingDetails({
+        basePrice: totals.subTotal,
+        weight: totals.weight,
+        exchangeRate,
+        marginPEN: 0,
+        taxPercentage: 0
+      })
+      
       return {
         request: {
           ...state.request,
-          weight,
-          sub_total: subTotal,
-          profit: profit / (state.request?.exchange_rate ?? 3.7),
-          price: subTotal + state.shipping + profit,
-          final_price: subTotal + state.shipping + profit,
-          exchange_rate: state.request?.exchange_rate,
+          weight: totals.weight,
+          sub_total: totals.subTotal,
+          profit: totals.profit,
+          price: totals.price,
+          final_price: totals.final_price,
+          exchange_rate: exchangeRate,
           products
-        } as PurchaseRequest
+        } as PurchaseRequest,
+        shipping: automaticShipping,
+        calculations: pricingCalculations
       }
     })
     toast.success("Producto eliminado")
@@ -148,9 +223,34 @@ export const useRequestDetailStore = create<RequestDetailState>((set, get) => ({
       } as PurchaseRequest
     }))
   },
+
   // UI state
   setCalculations: (calculations) => set({ calculations }),
   setWeight: (weight) => set({ weight }),
   setExchangeRate: (rate) => set({ exchangeRate: rate }),
   setProfit: (profit) => set({ profit }),
+  
+  // Computed actions
+  recalculateShipping: () => {
+    const state = get()
+    if (!state.request?.products) return
+    
+    const automaticShipping = calculateTotalShippingCost(state.request.products)
+    set({ shipping: automaticShipping })
+  },
+  
+  recalculatePricing: () => {
+    const state = get()
+    if (!state.request) return
+    
+    const pricingCalculations = calculatePricingDetails({
+      basePrice: state.request.sub_total || 0,
+      weight: state.request.weight || 0,
+      exchangeRate: state.request.exchange_rate || 3.7,
+      marginPEN: 0,
+      taxPercentage: 0
+    })
+    
+    set({ calculations: pricingCalculations })
+  }
 })) 

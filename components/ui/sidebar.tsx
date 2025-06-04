@@ -81,18 +81,6 @@ const SidebarProvider = React.forwardRef<
     const [_open, _setOpen] = React.useState(defaultOpen)
     const open = openProp ?? _open
 
-    // Read the cookie on initial mount to restore the sidebar state
-    React.useEffect(() => {
-      if (typeof window !== "undefined" && openProp === undefined) {
-        const cookies = document.cookie.split('; ')
-        const sidebarCookie = cookies.find(cookie => cookie.startsWith(`${SIDEBAR_COOKIE_NAME}=`))
-        if (sidebarCookie) {
-          const value = sidebarCookie.split('=')[1]
-          _setOpen(value === "true")
-        }
-      }
-    }, [openProp])
-
     const setOpen = React.useCallback(
       (value: boolean | ((value: boolean) => boolean)) => {
         const openState = typeof value === "function" ? value(open) : value
@@ -102,7 +90,7 @@ const SidebarProvider = React.forwardRef<
           _setOpen(openState)
         }
 
-        // This sets the cookie to keep the sidebar state.
+        // Set the cookie to persist sidebar state
         document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
       },
       [setOpenProp, open]

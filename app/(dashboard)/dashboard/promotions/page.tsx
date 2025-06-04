@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { PromotionsBoard } from "./_components/promotions-board";
+import { PromotionsList } from "./_components/promotions-list";
 import { PromotionsBoardSkeleton } from "./_components/promotions-board-skeleton";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { ErrorMessage } from "@/components/ui/error-message";
@@ -15,7 +15,7 @@ export default function PromotionsPage() {
     <ErrorBoundary fallback={<ErrorMessage />}>
       <HydrateClient>
         <Suspense fallback={<PromotionsBoardSkeleton />}>
-          <PromotionsBoard />
+          <PromotionsList />
         </Suspense>
       </HydrateClient>
     </ErrorBoundary>

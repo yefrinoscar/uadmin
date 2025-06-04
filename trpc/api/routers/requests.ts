@@ -839,6 +839,9 @@ export const requestsRouter = router({
           endDate = new Date(now.getFullYear(), 11, 31).toISOString();
         }
 
+        console.log(startDate, endDate);
+        
+
         // Build query for all requests
         let requestsQuery = ctx.supabase
           .from('purchase_requests')
