@@ -1,23 +1,10 @@
 import { z } from 'zod'
 import { router, protectedProcedure } from '@/trpc/init'
 import { TRPCError } from '@trpc/server'
-import type { Promotion } from '@/types/promotion'
+import { Promotion, promotionSchema } from '@/lib/schemas/promotion'
 
-// Create a schema for promotions
-const promotionSchema = z.object({
-  id: z.string().optional(),
-  name: z.string(),
-  title: z.string(),
-  description: z.string(),
-  condition_type: z.string(),
-  condition_value: z.string(),
-  background_color: z.string(),
-  active: z.boolean(),
-  is_main: z.boolean(),
-  start_date: z.string(),
-  end_date: z.string(),
-  text_color: z.string().optional(),
-})
+
+
 
 // Create schema for status update
 const promotionStatusSchema = z.object({

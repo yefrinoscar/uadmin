@@ -8,9 +8,9 @@ import { toast } from "sonner"
 import { Dialog, DialogTrigger } from "@/components/ui/dialog"
 import { PromotionCard } from "./promotion-card"
 import { PromotionFormDialog } from "./promotion-form-dialog"
-import { Promotion } from "@/types/promotion"
 import { useTRPC } from "@/trpc/client"
-import { useMutation, useSuspenseQuery } from "@tanstack/react-query"
+import { useMutation, useSuspenseQuery, useQueryClient } from "@tanstack/react-query"
+import { Promotion } from "@/lib/schemas/promotion"
 
 // Utility function to check if promotion is currently active based on dates
 function isPromotionCurrentlyActive(promotion: Promotion): boolean {
@@ -39,6 +39,7 @@ export function PromotionsList() {
   const [editingPromotion, setEditingPromotion] = useState<Promotion | null>(null)
   
   const trpc = useTRPC()
+  const queryClient = useQueryClient()
 
   // Get all promotions
   const { data: promotions = [] } = useSuspenseQuery(
@@ -74,11 +75,39 @@ export function PromotionsList() {
 
   const deletePromotionMutation = useMutation(
     trpc.promotions.delete.mutationOptions({
+      onMutate: async (deletedPromotionId) => {
+        // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
+        const queryKey = [['promotions', 'getAll'], { input: { ascending: true }, type: 'query' }]
+        await queryClient.cancelQueries({ queryKey })
+
+        // Snapshot the previous value
+        const previousPromotions = queryClient.getQueryData(queryKey) as Promotion[]
+
+        // Optimistically update to the new value
+        if (previousPromotions) {
+          queryClient.setQueryData(
+            queryKey,
+            previousPromotions.filter(promotion => promotion.id !== deletedPromotionId)
+          )
+        }
+
+        // Return a context object with the snapshotted value
+        return { previousPromotions, queryKey }
+      },
+      onError: (error, deletedPromotionId, context) => {
+        // If the mutation fails, use the context returned from onMutate to roll back
+        if (context?.previousPromotions && context?.queryKey) {
+          queryClient.setQueryData(context.queryKey, context.previousPromotions)
+        }
+        toast.error(`Error al eliminar la promoción: ${error.message}`)
+      },
       onSuccess: () => {
         toast.success("Promoción eliminada exitosamente")
       },
-      onError: (error) => {
-        toast.error(`Error al eliminar la promoción: ${error.message}`)
+      onSettled: () => {
+        // Always refetch after error or success to ensure we have the latest data
+        const queryKey = [['promotions', 'getAll'], { input: { ascending: true }, type: 'query' }]
+        queryClient.invalidateQueries({ queryKey })
       }
     })
   )
@@ -185,6 +214,30 @@ export function PromotionsList() {
     toast.success("Promoción establecida como principal")
   }
 
+  const handleToggleActive = async (promotion: Promotion) => {
+    const newActiveStatus = !promotion.active
+    
+    // Check if we're trying to activate and would exceed the limit
+    if (newActiveStatus) {
+      const activeCount = promotions.filter(p => 
+        p.id !== promotion.id && isPromotionCurrentlyActive(p)
+      ).length
+      
+      if (activeCount >= 2) {
+        toast.error("No puedes tener más de 2 promociones activas al mismo tiempo")
+        return
+      }
+    }
+
+    const updatedPromotion = { ...promotion, active: newActiveStatus }
+    await updatePromotionMutation.mutateAsync({
+      id: promotion.id,
+      promotion: updatedPromotion
+    })
+    
+    toast.success(newActiveStatus ? "Promoción activada" : "Promoción desactivada")
+  }
+
   const isPending = createPromotionMutation.isPending || 
                    updatePromotionMutation.isPending || 
                    deletePromotionMutation.isPending
@@ -246,21 +299,26 @@ export function PromotionsList() {
               ({currentlyActivePromotions.length}/2)
             </span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {currentlyActivePromotions.map((promotion) => (
-              <PromotionCard
-                key={promotion.id}
-                promotion={promotion}
-                isActive={true}
-                onEdit={handleEditPromotion}
-                onDelete={handleDeletePromotion}
-                onDuplicate={handleDuplicatePromotion}
-                onSetMain={handleSetAsMain}
-                isPending={isPending}
-                isReplacing={false}
-                showDuplicate={true}
-              />
-            ))}
+          <div className="overflow-x-auto">
+            <div className="flex gap-4 pb-4" style={{ minWidth: "fit-content" }}>
+              {currentlyActivePromotions.map((promotion) => (
+                <div key={promotion.id} className="flex-shrink-0 w-80">
+                  <PromotionCard
+                    promotion={promotion}
+                    isActive={true}
+                    onEdit={handleEditPromotion}
+                    onDelete={handleDeletePromotion}
+                    onDuplicate={handleDuplicatePromotion}
+                    onToggleActive={handleToggleActive}
+                    enabled={true}
+                    onSetMain={handleSetAsMain}
+                    isPending={isPending}
+                    isReplacing={false}
+                    showDuplicate={true}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -276,21 +334,26 @@ export function PromotionsList() {
         </div>
         
         {otherPromotions.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {otherPromotions.map((promotion) => (
-              <PromotionCard
-                key={promotion.id}
-                promotion={promotion}
-                isActive={false}
-                onEdit={handleEditPromotion}
-                onDelete={handleDeletePromotion}
-                onDuplicate={handleDuplicatePromotion}
-                onSetMain={handleSetAsMain}
-                isPending={isPending}
-                isReplacing={false}
-                showDuplicate={true}
-              />
-            ))}
+          <div className="overflow-x-auto">
+            <div className="flex gap-4 pb-4" style={{ minWidth: "fit-content" }}>
+              {otherPromotions.map((promotion) => (
+                <div key={promotion.id} className="flex-shrink-0 w-80">
+                  <PromotionCard
+                    promotion={promotion}
+                    isActive={false}
+                    onEdit={handleEditPromotion}
+                    onDelete={handleDeletePromotion}
+                    onDuplicate={handleDuplicatePromotion}
+                    onToggleActive={handleToggleActive}
+                    enabled={true}
+                    onSetMain={handleSetAsMain}
+                    isPending={isPending}
+                    isReplacing={false}
+                    showDuplicate={true}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="text-center py-12 text-muted-foreground">
