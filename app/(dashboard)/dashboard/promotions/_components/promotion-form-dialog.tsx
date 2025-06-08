@@ -18,7 +18,9 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { z } from "zod"
 import { TagInput } from "@/components/ui/tag-input"
 import { Upload, X } from "lucide-react"
-import { DatePicker } from "@/components/ui/date-picker"
+import { generateDateRange } from "@/lib/utils"
+import CalendarRangePicker from "@/components/calendar-range-picker"
+
 
 interface PromotionFormDialogProps {
   open: boolean
@@ -38,6 +40,15 @@ const formSchema = z.object({
   is_main: z.boolean().default(false),
   start_date: z.date(),
   end_date: z.date(),
+  range_date: z
+  .object({
+    from: z.date({
+      required_error: "A start date is required.",
+    }),
+    to: z.date({
+      required_error: "An end date is required.",
+    }),
+  }),
   text_color: z.string().min(4).max(9),
   background_color: z.string().min(4).max(9),
 }).refine((data) => data.end_date > data.start_date, {
@@ -66,6 +77,7 @@ export function PromotionFormDialog({
     condition_value: "",
     active: false,
     is_main: false,
+    range_date: generateDateRange(7),
     background_color: "#3498db",
     text_color: "#ffffff",
     start_date: new Date(),
@@ -83,6 +95,10 @@ export function PromotionFormDialog({
       background_color: editingPromotion.background_color || "#3498db",
       start_date: new Date(editingPromotion.start_date),
       end_date: new Date(editingPromotion.end_date),
+      range_date: {
+        from: new Date(editingPromotion.start_date),
+        to: new Date(editingPromotion.end_date),
+      },
     }
   }, [editingPromotion, defaultValues])
 
@@ -99,6 +115,10 @@ export function PromotionFormDialog({
     values: formValues, // Use values instead of defaultValues for controlled updates
   })
 
+  const s = form.watch('range_date')
+
+  console.log(s);
+  
   // Reset form and state when dialog opens/closes or editing promotion changes
   const resetForm = useCallback(() => {
     form.reset(formValues)
@@ -179,29 +199,6 @@ export function PromotionFormDialog({
     form.setValue('condition_value', newTags.join(', '))
   }, [form])
 
-  const handleStartDateChange = useCallback((date: Date | undefined) => {
-    if (date) {
-      form.setValue('start_date', date)
-      // If end date is before or same as start date, set it to next day
-      const endDate = form.getValues('end_date')
-      if (endDate <= date) {
-        const newEndDate = new Date(date)
-        newEndDate.setDate(date.getDate() + 1)
-        form.setValue('end_date', newEndDate)
-      }
-    }
-  }, [form])
-
-  const handleEndDateChange = useCallback((date: Date | undefined) => {
-    if (date) {
-      const startDate = form.getValues('start_date')
-      if (date <= startDate) {
-        toast.error("La fecha de fin debe ser posterior a la fecha de inicio")
-        return
-      }
-      form.setValue('end_date', date)
-    }
-  }, [form])
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -302,39 +299,9 @@ export function PromotionFormDialog({
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
-                    name="start_date"
+                    name="range_date"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Fecha de inicio</FormLabel>
-                        <FormControl>
-                          <DatePicker
-                            date={field.value}
-                            onSelect={handleStartDateChange}
-                            placeholder="Selecciona fecha de inicio"
-                            disabled={form.formState.isSubmitting}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="end_date"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Fecha de fin</FormLabel>
-                        <FormControl>
-                          <DatePicker
-                            date={field.value}
-                            onSelect={handleEndDateChange}
-                            placeholder="Selecciona fecha de fin"
-                            disabled={form.formState.isSubmitting || !form.getValues('start_date')}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
+                      <CalendarRangePicker label='Desde y hasta' range={field.value} setRange={field.onChange} />
                     )}
                   />
                 </div>

@@ -109,13 +109,8 @@ export function PromotionsList() {
 
   // Handlers
   const handleCreatePromotion = async (promotion: Promotion) => {
-    const activeCount = promotions.filter(isPromotionCurrentlyActive).length
+    console.log(promotion);
     
-    if (promotion.active && activeCount >= 2) {
-      toast.error("No puedes tener más de 2 promociones activas al mismo tiempo")
-      return
-    }
-
     await createPromotionMutation.mutateAsync(promotion)
   }
 
