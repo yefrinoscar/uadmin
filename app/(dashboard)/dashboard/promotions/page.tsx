@@ -8,7 +8,7 @@ import { HydrateClient, prefetch, trpc } from "@/trpc/server";
 export default function PromotionsPage() {
 
   prefetch(
-    trpc.promotions.getAll.queryOptions({ ascending: true })
+    trpc.promotions.getAll.queryOptions({ ascending: false })
   )
 
   return (

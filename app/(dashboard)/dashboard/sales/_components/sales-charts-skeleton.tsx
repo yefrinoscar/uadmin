@@ -8,7 +8,7 @@ export function SalesChartsSkeleton() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h2 className="text-2xl font-bold tracking-tight">Estadísticas de Ventas</h2>
+        <Skeleton className="h-8 w-64" />
         <Skeleton className="h-10 w-[180px]" />
       </div>
       
@@ -16,7 +16,9 @@ export function SalesChartsSkeleton() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ventas Totales</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              <Skeleton className="h-4 w-24" />
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <Skeleton className="h-10 w-[100px]" />
@@ -26,7 +28,9 @@ export function SalesChartsSkeleton() {
         
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ingresos</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              <Skeleton className="h-4 w-20" />
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <Skeleton className="h-10 w-[100px]" />
@@ -36,7 +40,9 @@ export function SalesChartsSkeleton() {
         
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ganancia</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              <Skeleton className="h-4 w-20" />
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <Skeleton className="h-10 w-[100px]" />
@@ -46,7 +52,9 @@ export function SalesChartsSkeleton() {
         
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ganancia Real</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              <Skeleton className="h-4 w-28" />
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <Skeleton className="h-10 w-[100px]" />
@@ -60,9 +68,15 @@ export function SalesChartsSkeleton() {
         <CardHeader>
           <Tabs defaultValue="overview" className="w-full">
             <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="overview" disabled>Resumen</TabsTrigger>
-              <TabsTrigger value="status" disabled>Por Estado</TabsTrigger>
-              <TabsTrigger value="profit" disabled>Ganancias</TabsTrigger>
+              <TabsTrigger value="overview" disabled>
+                <Skeleton className="h-4 w-16" />
+              </TabsTrigger>
+              <TabsTrigger value="status" disabled>
+                <Skeleton className="h-4 w-20" />
+              </TabsTrigger>
+              <TabsTrigger value="profit" disabled>
+                <Skeleton className="h-4 w-20" />
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         </CardHeader>

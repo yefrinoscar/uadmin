@@ -6,12 +6,17 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    const supabase = createAuthenticatedClient()
+    const supabase = createAuthenticatedClient();
+
+    const now = new Date().toISOString();
     
     const { data: promotions, error } = await supabase
       .from('promotions')
       .select('*')
-    
+      .eq('enabled', true)
+      .lte('start_date', now)
+      .or(`end_date.gte.${now},end_date.is.null`)
+
     if (error) {
       console.error('Error fetching promotions:', error)
       return NextResponse.json(

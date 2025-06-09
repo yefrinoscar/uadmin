@@ -20,7 +20,6 @@ import {
   DrawerTrigger,
 } from '@/components/ui/drawer';
 import { PricingCalculator } from "@/components/pricing-calculator";
-import { usePricingCalculations } from '@/hooks/usePricingCalculations';
 import { useDebounce } from '@/hooks/use-debounce';
 
 export const TotalSummaryCard = () => {

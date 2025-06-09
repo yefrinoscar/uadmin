@@ -3,33 +3,123 @@
 import { useState, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, Search } from "lucide-react"
+import { Plus, Search, Trash2 } from "lucide-react"
 import { toast } from "sonner"
-import { Dialog, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Card } from "@/components/ui/card"
 import { PromotionCard } from "./promotion-card"
 import { PromotionFormDialog } from "./promotion-form-dialog"
 import { useTRPC } from "@/trpc/client"
 import { useMutation, useSuspenseQuery, useQueryClient } from "@tanstack/react-query"
 import { Promotion } from "@/lib/schemas/promotion"
 
-// Utility function to check if promotion is currently active based on dates
+// Utility function to check if promotion is within its active time period (regardless of enabled status)
 function isPromotionCurrentlyActive(promotion: Promotion): boolean {
   const now = new Date()
   const startDate = new Date(promotion.start_date)
-  const endDate = new Date(promotion.end_date)
   
-  return now >= startDate && now <= endDate && promotion.active
+  // Check if current date is on or after start_date
+  if (now < startDate) return false
+  
+  // Check end_date: must be on or before end_date, OR end_date must be NULL
+  if (promotion.end_date !== null && promotion.end_date !== undefined) {
+    const endDate = new Date(promotion.end_date)
+    if (now > endDate) return false
+  }
+  
+  return true
+}
+
+// Skeleton card component for empty state
+function PromotionSkeleton({ index, section = "active" }: { index: number, section?: "active" | "other" }) {
+  const activeMessages = [
+    "Crea tu primera promoción y aparecerá aquí",
+    "Las promociones live se mostrarán en esta sección",
+    "Aprovecha para crear ofertas especiales"
+  ]
+  
+  const otherMessages = [
+    "Las promociones futuras aparecerán aquí",
+    "Promociones expiradas se mostrarán en esta sección",
+    "Gestiona el ciclo de vida de tus promociones"
+  ]
+  
+  const messages = section === "active" ? activeMessages : otherMessages
+  
+      const bgGradient = section === "active" 
+      ? "bg-gradient-to-br from-green-50/30 to-blue-50/30" 
+      : "bg-gradient-to-br from-gray-50/30 to-slate-50/30"
+    
+    return (
+      <Card className={`p-6 opacity-40 border-dashed border-2 hover:opacity-60 transition-opacity duration-200 ${bgGradient}`}>
+      <div className="space-y-4">
+        {/* Header skeleton */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-gray-300 rounded-full animate-pulse"></div>
+            <div className="w-20 h-3 bg-gray-300 rounded animate-pulse"></div>
+          </div>
+          <div className="w-10 h-5 bg-gray-300 rounded-full animate-pulse"></div>
+        </div>
+        
+        {/* Title skeleton */}
+        <div className="space-y-2">
+          <div className="w-3/4 h-5 bg-gray-300 rounded animate-pulse"></div>
+          <div className="w-full h-3 bg-gray-200 rounded animate-pulse"></div>
+          <div className="w-2/3 h-3 bg-gray-200 rounded animate-pulse"></div>
+        </div>
+        
+        {/* Dates skeleton */}
+        <div className="p-3 bg-gray-100/50 rounded-lg space-y-3">
+          <div className="flex justify-between">
+            <div className="space-y-1">
+              <div className="w-8 h-2 bg-gray-300 rounded animate-pulse"></div>
+              <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
+            </div>
+            <div className="space-y-1">
+              <div className="w-6 h-2 bg-gray-300 rounded animate-pulse"></div>
+              <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
+            </div>
+          </div>
+          <div className="w-32 h-2 bg-gray-200 rounded animate-pulse mx-auto"></div>
+        </div>
+        
+        {/* Tags skeleton */}
+        <div className="p-2 bg-gray-100/30 rounded">
+          <div className="w-24 h-2 bg-gray-200 rounded animate-pulse"></div>
+        </div>
+        
+        {/* Call to action message */}
+        <div className="text-center py-2">
+          <p className="text-xs text-muted-foreground font-medium">
+            {messages[index % messages.length]}
+          </p>
+        </div>
+        
+        {/* Actions skeleton */}
+        <div className="flex justify-between items-center">
+          <div className="w-8 h-8 bg-gray-200 rounded animate-pulse"></div>
+          <div className="w-8 h-8 bg-gray-200 rounded animate-pulse"></div>
+        </div>
+      </div>
+    </Card>
+  )
 }
 
 // Utility function to get promotion status
-function getPromotionStatus(promotion: Promotion): 'active' | 'expired' | 'pending' | 'inactive' {
+function getPromotionStatus(promotion: Promotion): 'active' | 'expired' | 'pending' | 'disabled' {
   const now = new Date()
   const startDate = new Date(promotion.start_date)
-  const endDate = new Date(promotion.end_date)
-  
-  if (!promotion.active) return 'inactive'
+
+  if (!promotion.enabled) return 'disabled'
   if (now < startDate) return 'pending'
-  if (now > endDate) return 'expired'
+  
+  // Check if expired (only if end_date exists)
+  if (promotion.end_date !== null && promotion.end_date !== undefined) {
+    const endDate = new Date(promotion.end_date)
+    if (now > endDate) return 'expired'
+  }
+  
   return 'active'
 }
 
@@ -37,22 +127,25 @@ export function PromotionsList() {
   const [searchTerm, setSearchTerm] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingPromotion, setEditingPromotion] = useState<Promotion | null>(null)
-  
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [promotionToDelete, setPromotionToDelete] = useState<Promotion | null>(null)
+
   const trpc = useTRPC()
   const queryClient = useQueryClient()
 
   // Get all promotions
-  const { data: promotions = [] } = useSuspenseQuery(
-    trpc.promotions.getAll.queryOptions({ ascending: true })
+  const { data: promotions = [], refetch } = useSuspenseQuery(
+    trpc.promotions.getAll.queryOptions({ ascending: false })
   )
 
   // Mutations
   const createPromotionMutation = useMutation(
     trpc.promotions.create.mutationOptions({
       onSuccess: () => {
-        toast.success("Promoción creada exitosamente")
         setIsDialogOpen(false)
         setEditingPromotion(null)
+
+        refetch()
       },
       onError: (error) => {
         toast.error(`Error al crear la promoción: ${error.message}`)
@@ -62,13 +155,34 @@ export function PromotionsList() {
 
   const updatePromotionMutation = useMutation(
     trpc.promotions.update.mutationOptions({
+      onMutate: async (variables) => {
+        const queryKey = [['promotions', 'getAll'], { input: { ascending: false }, type: 'query' }]
+        await queryClient.cancelQueries({ queryKey })
+        
+        const previousPromotions = queryClient.getQueryData(queryKey) as Promotion[]
+        
+        if (previousPromotions) {
+          const optimisticPromotions = previousPromotions.map(p =>
+            p.id === variables.id ? { ...p, ...variables.promotion } : p
+          )
+          queryClient.setQueryData(queryKey, optimisticPromotions)
+        }
+        
+        return { previousPromotions, queryKey }
+      },
+      onError: (error, variables, context) => {
+        if (context?.previousPromotions && context?.queryKey) {
+          queryClient.setQueryData(context.queryKey, context.previousPromotions)
+        }
+        toast.error(`Error al actualizar la promoción: ${error.message}`)
+      },
       onSuccess: () => {
-        toast.success("Promoción actualizada exitosamente")
         setIsDialogOpen(false)
         setEditingPromotion(null)
       },
-      onError: (error) => {
-        toast.error(`Error al actualizar la promoción: ${error.message}`)
+      onSettled: () => {
+        const queryKey = [['promotions', 'getAll'], { input: { ascending: false }, type: 'query' }]
+        queryClient.invalidateQueries({ queryKey })
       }
     })
   )
@@ -77,7 +191,7 @@ export function PromotionsList() {
     trpc.promotions.delete.mutationOptions({
       onMutate: async (deletedPromotionId) => {
         // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
-        const queryKey = [['promotions', 'getAll'], { input: { ascending: true }, type: 'query' }]
+        const queryKey = [['promotions', 'getAll'], { input: { ascending: false }, type: 'query' }]
         await queryClient.cancelQueries({ queryKey })
 
         // Snapshot the previous value
@@ -102,11 +216,11 @@ export function PromotionsList() {
         toast.error(`Error al eliminar la promoción: ${error.message}`)
       },
       onSuccess: () => {
-        toast.success("Promoción eliminada exitosamente")
+        // Silent success - optimistic update already handled
       },
       onSettled: () => {
         // Always refetch after error or success to ensure we have the latest data
-        const queryKey = [['promotions', 'getAll'], { input: { ascending: true }, type: 'query' }]
+        const queryKey = [['promotions', 'getAll'], { input: { ascending: false }, type: 'query' }]
         queryClient.invalidateQueries({ queryKey })
       }
     })
@@ -114,7 +228,7 @@ export function PromotionsList() {
 
   // Filter and categorize promotions
   const { currentlyActivePromotions, otherPromotions } = useMemo(() => {
-    const filtered = promotions.filter(promotion => 
+    const filtered = promotions.filter(promotion =>
       promotion.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       promotion.description.toLowerCase().includes(searchTerm.toLowerCase())
     )
@@ -122,9 +236,9 @@ export function PromotionsList() {
     const currentlyActive = filtered.filter(isPromotionCurrentlyActive)
     const others = filtered.filter(promotion => !isPromotionCurrentlyActive(promotion))
 
-    // Sort others by status: pending -> inactive -> expired
+    // Sort others by status: pending -> disabled -> expired
     others.sort((a, b) => {
-      const statusOrder = { pending: 0, inactive: 1, expired: 2, active: 3 }
+      const statusOrder = { pending: 0, disabled: 1, expired: 2, active: 3 }
       const statusA = getPromotionStatus(a)
       const statusB = getPromotionStatus(b)
       return statusOrder[statusA] - statusOrder[statusB]
@@ -138,37 +252,33 @@ export function PromotionsList() {
 
   // Handlers
   const handleCreatePromotion = async (promotion: Promotion) => {
-    const activeCount = promotions.filter(isPromotionCurrentlyActive).length
-    
-    if (promotion.active && activeCount >= 2) {
-      toast.error("No puedes tener más de 2 promociones activas al mismo tiempo")
-      return
-    }
+    console.log(promotion);
 
     await createPromotionMutation.mutateAsync(promotion)
   }
 
   const handleUpdatePromotion = async (promotion: Promotion) => {
-    if (editingPromotion) {
-      const activeCount = promotions.filter(p => 
-        p.id !== editingPromotion.id && isPromotionCurrentlyActive(p)
-      ).length
-      
-      if (promotion.active && activeCount >= 2) {
-        toast.error("No puedes tener más de 2 promociones activas al mismo tiempo")
-        return
-      }
-    }
-
+    console.log(promotion, 'promotion');
     await updatePromotionMutation.mutateAsync({
-      id: promotion.id,
+      id: promotion.id!,
       promotion: promotion
     })
   }
 
   const handleDeletePromotion = async (promotion: Promotion) => {
-    if (window.confirm("¿Estás seguro de que quieres eliminar esta promoción?")) {
-      await deletePromotionMutation.mutateAsync(promotion.id)
+    setPromotionToDelete(promotion)
+    setDeleteDialogOpen(true)
+  }
+
+  const confirmDelete = async () => {
+    if (promotionToDelete) {
+      // Close dialog immediately for better UX
+      setDeleteDialogOpen(false)
+      const promotionId = promotionToDelete.id!
+      setPromotionToDelete(null)
+      
+      // Then perform the deletion (optimistic update will handle UI)
+      deletePromotionMutation.mutate(promotionId)
     }
   }
 
@@ -181,66 +291,53 @@ export function PromotionsList() {
     const duplicated: Promotion = {
       ...promotion,
       id: '',
-      name: `${promotion.name} (Copia)`,
       title: `${promotion.title} (Copia)`,
       active: false,
-      is_main: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      enabled: false,
     }
-    
+
     await createPromotionMutation.mutateAsync(duplicated)
-    toast.success("Promoción duplicada exitosamente")
   }
 
   const handleSetAsMain = async (promotion: Promotion) => {
     // First, unset any existing main promotion
-    const currentMain = promotions.find(p => p.is_main && p.id !== promotion.id)
+    const currentMain = promotions.find(p => p.enabled && p.id !== promotion.id)
     if (currentMain) {
-      const updatedCurrentMain = { ...currentMain, is_main: false }
+      const updatedCurrentMain = { ...currentMain, enabled: false }
       await updatePromotionMutation.mutateAsync({
-        id: currentMain.id,
+        id: currentMain.id!,
         promotion: updatedCurrentMain
       })
     }
 
     // Then set this promotion as main
-    const updatedPromotion = { ...promotion, is_main: true }
+    const updatedPromotion = { ...promotion, enabled: true }
     await updatePromotionMutation.mutateAsync({
-      id: promotion.id,
+      id: promotion.id!,
       promotion: updatedPromotion
     })
-    
-    toast.success("Promoción establecida como principal")
   }
 
-  const handleToggleActive = async (promotion: Promotion) => {
-    const newActiveStatus = !promotion.active
+  const handleToggleEnabled = async (promotion: Promotion) => {
+    // Get the current state from the query cache to avoid stale closures
+    const queryKey = [['promotions', 'getAll'], { input: { ascending: false }, type: 'query' }]
+    const currentPromotions = queryClient.getQueryData(queryKey) as Promotion[]
     
-    // Check if we're trying to activate and would exceed the limit
-    if (newActiveStatus) {
-      const activeCount = promotions.filter(p => 
-        p.id !== promotion.id && isPromotionCurrentlyActive(p)
-      ).length
-      
-      if (activeCount >= 2) {
-        toast.error("No puedes tener más de 2 promociones activas al mismo tiempo")
-        return
-      }
-    }
-
-    const updatedPromotion = { ...promotion, active: newActiveStatus }
-    await updatePromotionMutation.mutateAsync({
-      id: promotion.id,
+    if (!currentPromotions) return
+    
+    // Find the current promotion state (might have been updated by previous optimistic updates)
+    const currentPromotion = currentPromotions.find(p => p.id === promotion.id)
+    if (!currentPromotion) return
+    
+    const newEnabledStatus = !currentPromotion.enabled
+    const updatedPromotion = { ...currentPromotion, enabled: newEnabledStatus }
+    
+    // Let the mutation handle optimistic updates
+    updatePromotionMutation.mutate({
+      id: promotion.id!,
       promotion: updatedPromotion
     })
-    
-    toast.success(newActiveStatus ? "Promoción activada" : "Promoción desactivada")
   }
-
-  const isPending = createPromotionMutation.isPending || 
-                   updatePromotionMutation.isPending || 
-                   deletePromotionMutation.isPending
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -252,15 +349,14 @@ export function PromotionsList() {
             Gestiona las promociones de tu tienda
           </p>
         </div>
-        
+
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button 
+            <Button
               onClick={() => {
                 setEditingPromotion(null)
                 setIsDialogOpen(true)
               }}
-              disabled={isPending}
             >
               <Plus className="w-4 h-4 mr-2" />
               Nueva Promoción
@@ -290,82 +386,121 @@ export function PromotionsList() {
       </div>
 
       {/* Currently Active Promotions */}
-      {currentlyActivePromotions.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-            <h2 className="text-xl font-semibold">Promociones Activas</h2>
-            <span className="text-sm text-muted-foreground">
-              ({currentlyActivePromotions.length}/2)
-            </span>
-          </div>
-          <div className="overflow-x-auto">
-            <div className="flex gap-4 pb-4" style={{ minWidth: "fit-content" }}>
-              {currentlyActivePromotions.map((promotion) => (
-                <div key={promotion.id} className="flex-shrink-0 w-80">
-                  <PromotionCard
-                    promotion={promotion}
-                    isActive={true}
-                    onEdit={handleEditPromotion}
-                    onDelete={handleDeletePromotion}
-                    onDuplicate={handleDuplicatePromotion}
-                    onToggleActive={handleToggleActive}
-                    enabled={true}
-                    onSetMain={handleSetAsMain}
-                    isPending={isPending}
-                    isReplacing={false}
-                    showDuplicate={true}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+          <h2 className="text-xl font-semibold">Promociones live</h2>
+          <span className="text-sm text-muted-foreground">
+            ({currentlyActivePromotions.length})
+          </span>
+          
         </div>
-      )}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {currentlyActivePromotions.length > 0 ? (
+            currentlyActivePromotions.map((promotion) => (
+              <PromotionCard
+                key={promotion.id}
+                promotion={promotion}
+                isActive={true}
+                onEdit={handleEditPromotion}
+                onDelete={handleDeletePromotion}
+                onDuplicate={handleDuplicatePromotion}
+                onToggleActive={handleToggleEnabled}
+                enabled={true}
+                onSetMain={handleSetAsMain}
+                isPending={false}
+                isReplacing={false}
+                showDuplicate={true}
+              />
+            ))
+          ) : (
+            // Show skeleton cards when no active promotions
+            Array.from({ length: 3 }, (_, index) => (
+              <PromotionSkeleton key={`skeleton-${index}`} index={index} />
+            ))
+          )}
+        </div>
+      </div>
+
 
       {/* Other Promotions */}
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 bg-gray-400 rounded-full"></div>
-          <h2 className="text-xl font-semibold">Otras Promociones</h2>
+          <h2 className="text-xl font-semibold">Promociones pendientes o expiradas</h2>
           <span className="text-sm text-muted-foreground">
             ({otherPromotions.length})
           </span>
-        </div>
         
-        {otherPromotions.length > 0 ? (
-          <div className="overflow-x-auto">
-            <div className="flex gap-4 pb-4" style={{ minWidth: "fit-content" }}>
-              {otherPromotions.map((promotion) => (
-                <div key={promotion.id} className="flex-shrink-0 w-80">
-                  <PromotionCard
-                    promotion={promotion}
-                    isActive={false}
-                    onEdit={handleEditPromotion}
-                    onDelete={handleDeletePromotion}
-                    onDuplicate={handleDuplicatePromotion}
-                    onToggleActive={handleToggleActive}
-                    enabled={true}
-                    onSetMain={handleSetAsMain}
-                    isPending={isPending}
-                    isReplacing={false}
-                    showDuplicate={true}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="text-center py-12 text-muted-foreground">
-            {promotions.length === 0 
-              ? "No hay promociones creadas aún" 
-              : searchTerm 
-                ? "No se encontraron promociones que coincidan con tu búsqueda"
-                : "Todas las promociones están actualmente activas"
-            }
-          </div>
-        )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {otherPromotions.length > 0 ? (
+            otherPromotions.map((promotion) => (
+              <PromotionCard
+                key={promotion.id}
+                promotion={promotion}
+                isActive={false}
+                onEdit={handleEditPromotion}
+                onDelete={handleDeletePromotion}
+                onDuplicate={handleDuplicatePromotion}
+                onToggleActive={handleToggleEnabled}
+                enabled={true}
+                onSetMain={handleSetAsMain}
+                isPending={false}
+                isReplacing={false}
+                showDuplicate={true}
+              />
+            ))
+          ) : (
+            // Show skeleton cards when no other promotions
+            Array.from({ length: 2 }, (_, index) => (
+              <PromotionSkeleton key={`skeleton-other-${index}`} index={index} section="other" />
+            ))
+          )}
+        </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" />
+              Eliminar Promoción
+            </DialogTitle>
+            <DialogDescription className="text-left">
+              ¿Estás seguro de que quieres eliminar la promoción
+              <span className="font-semibold text-foreground">
+                {promotionToDelete?.title}
+              </span>?
+              <br />
+              <br />
+              Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteDialogOpen(false)
+                setPromotionToDelete(null)
+              }}
+              className="w-full sm:w-auto"
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              className="w-full sm:w-auto"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Eliminar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 } 

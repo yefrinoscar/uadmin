@@ -46,7 +46,7 @@ export function NavUser({
   }
 }) {
   const { isMobile } = useSidebar()
-  const { setTheme, theme } = useTheme()
+  const { setTheme } = useTheme()
 
   return (
     <SidebarMenu>

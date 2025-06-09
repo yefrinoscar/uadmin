@@ -64,3 +64,13 @@ export function generateAttractivePrices(
     .filter((item, index, self) => index === self.findIndex((t) => t.value === item.value))
     .slice(0, 4);
 }
+
+export function generateDateRange(days: number) {
+  const now = new Date();
+  const tomorrow = new Date(now.setDate(now.getDate() + 1));
+  const endDate = new Date(now.setDate(now.getDate() + days));
+  return {
+    from: tomorrow,
+    to: endDate,
+  };
+}

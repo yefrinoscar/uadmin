@@ -20,8 +20,6 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
 import {
   Form,
   FormControl,
@@ -38,7 +36,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { cn } from "@/lib/utils"
 
 // Form schema
 const formSchema = z.object({
@@ -126,7 +123,7 @@ export function SaleFormDialog({ sale, onSuccess, trigger }: SaleFormDialogProps
         if (onSuccess) onSuccess()
         form.reset()
       },
-      onError: (error: any) => {
+      onError: (error) => {
         console.error("Error creating sale:", error)
       }
     })
@@ -139,7 +136,7 @@ export function SaleFormDialog({ sale, onSuccess, trigger }: SaleFormDialogProps
         if (onSuccess) onSuccess()
         form.reset()
       },
-      onError: (error: any) => {
+      onError: (error) => {
         console.error("Error updating sale:", error)
       }
     })

@@ -2,7 +2,7 @@
 
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Edit, Trash2, Copy, CircleDashed, Zap, Clock, XCircle, MoreVertical, Power, PowerOff } from "lucide-react"
+import { Edit, Trash2, Copy, Clock, XCircle, MoreVertical, Power, PowerOff } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -31,43 +31,49 @@ interface PromotionCardProps {
 function getPromotionStatus(promotion: Promotion) {
   const now = new Date()
   const startDate = new Date(promotion.start_date)
-  const endDate = new Date(promotion.end_date)
 
-  if (!promotion.active) return { status: 'inactive', color: 'gray', icon: CircleDashed, label: 'Inactiva' }
+  if (!promotion.enabled) return { status: 'disabled', color: 'gray', icon: PowerOff, label: 'Deshabilitada' }
   if (now < startDate) return { status: 'pending', color: 'blue', icon: Clock, label: 'Pendiente' }
-  if (now > endDate) return { status: 'expired', color: 'red', icon: XCircle, label: 'Expirada' }
-  return { status: 'active', color: 'green', icon: Zap, label: 'Activa' }
+  
+  // Check if expired (only if end_date exists)
+  if (promotion.end_date !== null && promotion.end_date !== undefined) {
+    const endDate = new Date(promotion.end_date)
+    if (now > endDate) return { status: 'expired', color: 'red', icon: XCircle, label: 'Expirada' }
+  }
+  
+  return { status: 'active', color: 'green', icon: Power, label: 'Habilitada' }
 }
 
 export function PromotionCard({
   promotion,
-  isActive,
   onClick,
   onEdit,
   onDelete,
-  onSetMain,
   onDuplicate,
   onToggleActive,
-  enabled = false,
   isPending,
   showDuplicate = false,
   isPublic = false
 }: PromotionCardProps) {
   const startDate = new Date(promotion.start_date)
-  const endDate = new Date(promotion.end_date)
   const now = new Date()
   const statusInfo = getPromotionStatus(promotion)
   const StatusIcon = statusInfo.icon
 
-  // Calculate if promotion is currently live (regardless of active flag)
-  const isCurrentlyLive = now >= startDate && now <= endDate && promotion.active
+  // Calculate if promotion is currently live
+  const isCurrentlyLive = promotion.enabled && now >= startDate && (
+    promotion.end_date === null || 
+    promotion.end_date === undefined || 
+    now <= new Date(promotion.end_date)
+  )
 
   return (
     <Card
       className={cn(
         "transition-all duration-200 overflow-hidden cursor-pointer hover:shadow-lg",
         isCurrentlyLive ? "ring-2 ring-green-500/20 bg-green-50/50" : "",
-        statusInfo.status === 'expired' ? "opacity-70" : ""
+        statusInfo.status === 'expired' ? "opacity-70" : "",
+        statusInfo.status === 'disabled' ? "opacity-60 bg-gray-50/50 ring-1 ring-gray-200" : ""
       )}
       onClick={onClick}
     >
@@ -76,33 +82,52 @@ export function PromotionCard({
         <div className="flex-1 min-w-0">
           {/* Header with status and toggle */}
           <div className="flex items-center justify-between mb-3">
+            {/* Status indicator */}
+            <div className="flex items-center gap-2">
+              <StatusIcon 
+                className={cn(
+                  "w-4 h-4",
+                  statusInfo.color === 'green' && "text-green-600",
+                  statusInfo.color === 'blue' && "text-blue-600", 
+                  statusInfo.color === 'red' && "text-red-600",
+                  statusInfo.color === 'gray' && "text-gray-500"
+                )} 
+              />
+              <span className={cn(
+                "text-xs font-medium",
+                statusInfo.color === 'green' && "text-green-600",
+                statusInfo.color === 'blue' && "text-blue-600",
+                statusInfo.color === 'red' && "text-red-600", 
+                statusInfo.color === 'gray' && "text-gray-500"
+              )}>
+                {statusInfo.label}
+              </span>
+            </div>
 
-            {/* Elegant Toggle Switch - Only show for active promotions when enabled */}
-            {enabled && onToggleActive && !isPublic && isCurrentlyLive && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-green-600">
-                  Habilitada
-                </span>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <Switch
-                          checked={true}
-                          onCheckedChange={(checked) => {
-                            onToggleActive(promotion);
-                          }}
-                          disabled={isPending}
-                          className="data-[state=checked]:bg-green-500"
-                        />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Desactivar promoción</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
+            {/* Enable/Disable Toggle Switch - Show for all promotions when not public */}
+            {onToggleActive && !isPublic && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <Switch
+                        checked={promotion.enabled}
+                        onCheckedChange={() => {
+                          onToggleActive(promotion);
+                        }}
+                        disabled={isPending}
+                        className={cn(
+                          "data-[state=checked]:bg-green-500",
+                          !promotion.enabled && "data-[state=unchecked]:bg-gray-300"
+                        )}
+                      />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{promotion.enabled ? "Deshabilitar promoción" : "Habilitar promoción"}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
           </div>
 
@@ -120,18 +145,24 @@ export function PromotionCard({
               </div>
               <div className="text-right">
                 <div className="text-xs font-medium text-muted-foreground">Fin</div>
-                <div className="font-medium">{format(endDate, "d MMM yyyy", { locale: es })}</div>
+                <div className="font-medium">
+                  {promotion.end_date ? format(new Date(promotion.end_date), "d MMM yyyy", { locale: es }) : "Sin límite"}
+                </div>
               </div>
             </div>
 
             {/* Duration indicator */}
             <div className="text-xs text-muted-foreground text-center">
-              {now < startDate ? (
+              {!promotion.enabled ? (
+                "Promoción deshabilitada"
+              ) : now < startDate ? (
                 `Inicia en ${Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))} días`
-              ) : now > endDate ? (
-                `Expiró hace ${Math.ceil((now.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24))} días`
+              ) : !promotion.end_date ? (
+                "Promoción indefinida"
+              ) : now > new Date(promotion.end_date) ? (
+                `Expiró hace ${Math.ceil((now.getTime() - new Date(promotion.end_date).getTime()) / (1000 * 60 * 60 * 24))} días`
               ) : (
-                `Activa por ${Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))} días más`
+                `Activa por ${Math.ceil((new Date(promotion.end_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))} días más`
               )}
             </div>
           </div>

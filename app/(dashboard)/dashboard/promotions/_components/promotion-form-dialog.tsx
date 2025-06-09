@@ -12,14 +12,23 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form"
 import { Switch } from "@/components/ui/switch"
 import { z } from "zod"
 import { TagInput } from "@/components/ui/tag-input"
-import { Upload, X, Sparkles, ArrowRight } from "lucide-react"
-import { DatePicker } from "@/components/ui/date-picker"
+import { ArrowRight, Upload, X } from "lucide-react"
+import { generateDateRange, cn } from "@/lib/utils"
+import CalendarRangePicker from "@/components/calendar-range-picker"
+import { 
+  Promotion, 
+  promotionFormSchema, 
+  transformPromotionForServer,
+  transformPromotionFromServer 
+} from "@/lib/schemas/promotion"
 import { ColorPickerCircle } from "@/components/ui/color-picker-circle"
-import { Promotion, promotionSchema } from "@/lib/schemas/promotion"
+import { Skeleton } from "@/components/ui/skeleton"
+import React from "react"
+
 
 interface PromotionFormDialogProps {
   open: boolean
@@ -29,8 +38,7 @@ interface PromotionFormDialogProps {
   activePromotionsCount: number
 }
 
-
-type FormValues = z.infer<typeof promotionSchema>
+type FormValues = z.infer<typeof promotionFormSchema>
 
 export function PromotionFormDialog({
   open,
@@ -40,6 +48,7 @@ export function PromotionFormDialog({
   activePromotionsCount,
 }: PromotionFormDialogProps) {
   const [headerImage, setHeaderImage] = useState<string | null>(null)
+  const [imageLoading, setImageLoading] = useState(false)
 
   // Memoize default values to avoid recreating on each render
   const defaultValues = useMemo((): FormValues => ({
@@ -47,30 +56,34 @@ export function PromotionFormDialog({
     description: "",
     button_text: "Ver detalles",
     tags: "",
-    order: null,
+    image_url: "",
+    sort_order: 0,
     active: false,
-    enabled: true,
+    enabled: false,
+    range_date: generateDateRange(7),
     text_color: "#ffffff",
     button_background_color: "#4D2DDA",
-    start_date: new Date(),
-    end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
   }), [])
 
   // Memoize form values based on editing state
   const formValues = useMemo((): FormValues => {
     if (!editingPromotion) return defaultValues
     
-    return {
+    console.log(editingPromotion, 'editingPromotion');
+    
+    // Transform server data to form data
+    return transformPromotionFromServer({
       ...editingPromotion,
-      button_text: (editingPromotion as any).button_text || "Ver detalles",
+      button_text: editingPromotion.button_text || "Ver detalles",
       text_color: editingPromotion.text_color || "#ffffff",
       button_background_color: editingPromotion.button_background_color || "#4D2DDA",
       tags: editingPromotion.tags || "",
-      order: (editingPromotion as any).order || null,
-      enabled: (editingPromotion as any).enabled || false,
-      start_date: new Date(editingPromotion.start_date),
-      end_date: new Date(editingPromotion.end_date),
-    }
+      image_url: editingPromotion.image_url || "",
+      sort_order: editingPromotion.sort_order ?? 0,
+      enabled: editingPromotion.enabled || false,
+      start_date: editingPromotion.start_date || new Date().toISOString(),
+      end_date: editingPromotion.end_date || new Date().toISOString(),
+    })
   }, [editingPromotion, defaultValues])
 
   // Memoize initial product tags
@@ -82,19 +95,46 @@ export function PromotionFormDialog({
   const [productTags, setProductTags] = useState<string[]>(() => initialProductTags)
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(promotionSchema),
+    resolver: zodResolver(promotionFormSchema),
     values: formValues, // Use values instead of defaultValues for controlled updates
   })
 
-  // Watch form values for preview
   const watchedValues = form.watch()
+
+  // Effect to update headerImage when editingPromotion changes
+  React.useEffect(() => {
+    if (editingPromotion?.image_url) {
+      setImageLoading(true)
+      setHeaderImage(editingPromotion.image_url as string)
+      // Simulate loading time for existing images
+      setTimeout(() => setImageLoading(false), 500)
+    } else {
+      setHeaderImage(null)
+      setImageLoading(false)
+    }
+  }, [editingPromotion])
 
   // Reset form and state when dialog opens/closes or editing promotion changes
   const resetForm = useCallback(() => {
     form.reset(formValues)
     setProductTags(initialProductTags)
-    setHeaderImage(null)
-  }, [form, formValues, initialProductTags])
+    // Set image from editing promotion or clear it
+    if (editingPromotion?.image_url) {
+      setImageLoading(true)
+      setHeaderImage(editingPromotion.image_url as string)
+      setTimeout(() => setImageLoading(false), 500)
+    } else {
+      setHeaderImage(null)
+      setImageLoading(false)
+    }
+  }, [form, formValues, initialProductTags, editingPromotion])
+
+  // Reset form whenever editingPromotion changes (including when it becomes null for new promotions)
+  React.useEffect(() => {
+    if (open) {
+      resetForm()
+    }
+  }, [editingPromotion, open, resetForm])
 
   // Handle dialog open change with state reset
   const handleOpenChange = useCallback((newOpen: boolean) => {
@@ -109,37 +149,46 @@ export function PromotionFormDialog({
     const file = event.target.files?.[0]
     if (!file) return
 
+    setImageLoading(true)
     const reader = new FileReader()
     reader.onloadend = () => {
       const result = reader.result as string
       setHeaderImage(result)
+      // Set the base64 data directly to image_url for new uploads
+      form.setValue('image_url', result)
+      form.trigger('image_url')
+      setImageLoading(false)
+    }
+    reader.onerror = () => {
+      setImageLoading(false)
+      toast.error("Error al cargar la imagen")
     }
     reader.readAsDataURL(file)
-  }, [])
+  }, [form])
 
-  const removeImage = useCallback((type: 'header') => {
+  const removeImage = useCallback(() => {
     setHeaderImage(null)
-  }, [])
+    setImageLoading(false)
+    form.setValue('image_url', "")
+    form.trigger('image_url')
+  }, [form])
 
   const handleSubmit = useCallback(async (values: FormValues) => {
-    if (productTags.length === 0) {
-      toast.error("Por favor ingrese al menos un producto")
-      return
-    }
-
     if (values.active && activePromotionsCount >= 2 && (!editingPromotion || !editingPromotion.active)) {
       toast.error("No se pueden tener más de 2 promociones activas")
       return
     }
 
-
-
     try {
-      await onSubmit({
+      // Transform form data to server format
+      const serverData = transformPromotionForServer({
         ...values,
         tags: productTags.join(', '),
         id: editingPromotion?.id || undefined,
+        sort_order: values.sort_order ?? editingPromotion?.sort_order ?? 0
       })
+      
+      await onSubmit(serverData)
       handleOpenChange(false)
     } catch (error) {
       console.error("Error submitting promotion:", error)
@@ -149,32 +198,12 @@ export function PromotionFormDialog({
 
   const handleTagsChange = useCallback((newTags: string[]) => {
     setProductTags(newTags)
-    form.setValue('tags', newTags.join(', '))
+    const tagsString = newTags.join(', ')
+    form.setValue('tags', tagsString)
+    // Trigger validation for the tags field
+    form.trigger('tags')
   }, [form])
 
-  const handleStartDateChange = useCallback((date: Date | undefined) => {
-    if (date) {
-      form.setValue('start_date', date)
-      // If end date is before or same as start date, set it to next day
-      const endDate = form.getValues('end_date')
-      if (endDate <= date) {
-        const newEndDate = new Date(date)
-        newEndDate.setDate(date.getDate() + 1)
-        form.setValue('end_date', newEndDate)
-      }
-    }
-  }, [form])
-
-  const handleEndDateChange = useCallback((date: Date | undefined) => {
-    if (date) {
-      const startDate = form.getValues('start_date')
-      if (date <= startDate) {
-        toast.error("La fecha de fin debe ser posterior a la fecha de inicio")
-        return
-      }
-      form.setValue('end_date', date)
-    }
-  }, [form])
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -198,7 +227,6 @@ export function PromotionFormDialog({
                       <FormControl>
                         <Input {...field} />
                       </FormControl>
-                      <FormMessage />
                     </FormItem>
                   )}
                 />
@@ -212,7 +240,6 @@ export function PromotionFormDialog({
                       <FormControl>
                         <Input {...field} />
                       </FormControl>
-                      <FormMessage />
                     </FormItem>
                   )}
                 />
@@ -226,7 +253,6 @@ export function PromotionFormDialog({
                       <FormControl>
                         <Input {...field} placeholder="Ej: Ver detalles, Comprar ahora" />
                       </FormControl>
-                      <FormMessage />
                     </FormItem>
                   )}
                 />
@@ -234,7 +260,7 @@ export function PromotionFormDialog({
                 <FormField
                   control={form.control}
                   name="tags"
-                  render={() => (
+                  render={({ fieldState }) => (
                     <FormItem>
                       <FormLabel>Tags</FormLabel>
                       <FormControl>
@@ -243,9 +269,9 @@ export function PromotionFormDialog({
                           setTags={handleTagsChange}
                           placeholder="Presiona Enter para agregar un tag..."
                           disabled={form.formState.isSubmitting}
+                          hasError={!!fieldState.error}
                         />
                       </FormControl>
-                      <FormMessage />
                     </FormItem>
                   )}
                 />
@@ -264,7 +290,6 @@ export function PromotionFormDialog({
                             disabled={form.formState.isSubmitting}
                           />
                         </FormControl>
-                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -281,7 +306,6 @@ export function PromotionFormDialog({
                             disabled={form.formState.isSubmitting}
                           />
                         </FormControl>
-                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -320,90 +344,83 @@ export function PromotionFormDialog({
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
-                    name="start_date"
+                    name="range_date"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Fecha de inicio</FormLabel>
-                        <FormControl>
-                          <DatePicker
-                            date={field.value}
-                            onSelect={handleStartDateChange}
-                            placeholder="Selecciona fecha de inicio"
-                            disabled={form.formState.isSubmitting}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="end_date"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Fecha de fin</FormLabel>
-                        <FormControl>
-                          <DatePicker
-                            date={field.value}
-                            onSelect={handleEndDateChange}
-                            placeholder="Selecciona fecha de fin"
-                            disabled={form.formState.isSubmitting || !form.getValues('start_date')}
-                            disabledDates={{
-                              before: form.getValues('start_date') 
-                                ? form.getValues('start_date')
-                                : new Date()
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
+                      <CalendarRangePicker label='Desde y hasta' range={field.value} setRange={field.onChange} />
                     )}
                   />
                 </div>
               </Form>
               
               {/* Header Image */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Imagen de Encabezado</label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
-                  {headerImage ? (
-                    <div className="relative">
-                      <img 
-                        src={headerImage} 
-                        alt="Header preview" 
-                        className="w-full h-32 object-cover rounded-lg"
-                      />
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        className="absolute top-2 right-2"
-                        onClick={() => removeImage('header')}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="text-center">
-                      <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                      <div className="mt-2">
-                        <label className="cursor-pointer">
-                          <span className="text-sm text-gray-600">
-                            Haz clic para subir imagen de encabezado
-                          </span>
-                          <input
-                            type="file"
-                            className="sr-only"
-                            accept="image/*"
-                            onChange={(e) => handleImageUpload('header', e)}
-                          />
-                        </label>
-                      </div>
-                    </div>
+              <Form {...form}>
+                <FormField
+                  control={form.control}
+                  name="image_url"
+                  render={({ fieldState }) => (
+                    <FormItem>
+                      <FormLabel>Imagen de Encabezado</FormLabel>
+                      <FormControl>
+                        <div className={cn(
+                          "border-2 border-dashed rounded-lg p-4 transition-[color,box-shadow]",
+                          fieldState.error ? "border-destructive" : "border-gray-300"
+                        )}>
+                          {imageLoading ? (
+                            <div className="space-y-3">
+                              <Skeleton className="w-full h-32 rounded-lg" />
+                              <div className="flex justify-center">
+                                <Skeleton className="h-4 w-32" />
+                              </div>
+                            </div>
+                          ) : headerImage ? (
+                            <div className="relative">
+                              <img 
+                                src={headerImage} 
+                                alt="Header preview" 
+                                className="w-full h-32 object-cover rounded-lg"
+                              />
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="sm"
+                                className="absolute top-2 right-2"
+                                onClick={() => removeImage()}
+                                disabled={imageLoading}
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="text-center">
+                              <Upload className={cn(
+                                "mx-auto h-12 w-12",
+                                fieldState.error ? "text-destructive" : "text-gray-400"
+                              )} />
+                              <div className="mt-2">
+                                <label className="cursor-pointer">
+                                  <span className={cn(
+                                    "text-sm",
+                                    fieldState.error ? "text-destructive" : "text-gray-600"
+                                  )}>
+                                    Haz clic para subir imagen de encabezado
+                                  </span>
+                                  <input
+                                    type="file"
+                                    className="sr-only"
+                                    accept="image/*"
+                                    onChange={(e) => handleImageUpload('header', e)}
+                                    disabled={imageLoading}
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </FormControl>
+                    </FormItem>
                   )}
-                </div>
-              </div>
+                />
+              </Form>
 
 
             </div>
@@ -413,52 +430,59 @@ export function PromotionFormDialog({
           <div className="mt-8">
             <h3 className="font-semibold text-sm mb-4">Vista Previa</h3>
             <div className="rounded-xl overflow-hidden border shadow-sm">
-                            <div 
-                className="w-full h-[85px] relative flex items-center overflow-hidden"
-                style={{ 
-                  backgroundImage: headerImage ? `url(${headerImage})` : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                  backgroundColor: 'transparent'
-                }}
-              >
-                {/* Gradient overlay for text contrast */}
-                <div 
-                  className="absolute inset-0"
-                  style={{
-                    background: `linear-gradient(to right, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 50%)`
-                  }}
-                />
-                
-                {/* Content */}
-                <div className="absolute inset-0 flex items-center px-4 z-10">
-                  <div className="flex flex-col gap-2">
-                    <p 
-                      className="text-base font-medium opacity-90 truncate"
-                      style={{ 
-                        color: watchedValues.text_color || "#ffffff"
-                      }}
-                    >
-                      {watchedValues.description || 'Descripción de la promoción'}
-                    </p>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="group hover:translate-x-1 transition-transform shrink-0 w-fit"
-                                                                    style={{
-                        backgroundColor: watchedValues.button_background_color || "#4D2DDA",
-                        color: watchedValues.text_color || "#ffffff",
-                      border: 'none'
-                      }}
-                    >
-                      {watchedValues.button_text || 'Ver detalles'}
-                      <ArrowRight className="w-3 h-3 ml-2 group-hover:translate-x-1 transition-transform" />
-                    </Button>
+              {imageLoading ? (
+                <div className="w-full h-[85px] relative flex items-center p-4 bg-gray-50">
+                  <div className="flex flex-col gap-2 flex-1">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-8 w-24 rounded-md" />
                   </div>
                 </div>
-
-
-              </div>
+              ) : (
+                <div 
+                  className="w-full h-[85px] relative flex items-center overflow-hidden"
+                  style={{ 
+                    backgroundImage: headerImage ? `url(${headerImage})` : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    backgroundColor: 'transparent'
+                  }}
+                >
+                  {/* Gradient overlay for text contrast */}
+                  <div 
+                    className="absolute inset-0"
+                    style={{
+                      background: `linear-gradient(to right, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 50%)`
+                    }}
+                  />
+                  
+                  {/* Content */}
+                  <div className="absolute inset-0 flex items-center px-4 z-10">
+                    <div className="flex flex-col gap-2">
+                      <p 
+                        className="text-base font-medium opacity-90 truncate"
+                        style={{ 
+                          color: watchedValues.text_color || "#ffffff"
+                        }}
+                      >
+                        {watchedValues.description || 'Descripción de la promoción'}
+                      </p>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="group hover:translate-x-1 transition-transform shrink-0 w-fit"
+                        style={{
+                          backgroundColor: watchedValues.button_background_color || "#4D2DDA",
+                          color: watchedValues.text_color || "#ffffff",
+                          border: 'none'
+                        }}
+                      >
+                        {watchedValues.button_text || 'Ver detalles'}
+                        <ArrowRight className="w-3 h-3 ml-2 group-hover:translate-x-1 transition-transform" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
