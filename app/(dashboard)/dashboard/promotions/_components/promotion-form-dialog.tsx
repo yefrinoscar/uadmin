@@ -30,7 +30,6 @@ interface PromotionFormDialogProps {
 }
 
 
-
 type FormValues = z.infer<typeof promotionSchema>
 
 export function PromotionFormDialog({
