@@ -25,11 +25,12 @@ import html2canvas from "html2canvas";
 import generatePdf from 'react-to-pdf';
 
 export function RequestPreviewDrawer() {
-  const { request, products, exchangeRate, profit } = useRequestDetailStore();
+  const { request, exchangeRate } = useRequestDetailStore();
   const contentRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
   
   // Determine if it's a quote or an order based on status
+  const products = request?.products ?? [];
   const isPending = request?.status === "pending";
   const documentType = isPending ? "Cotización" : "Pedido";
   
@@ -45,7 +46,8 @@ export function RequestPreviewDrawer() {
 
   // Calculate totals
   const subtotal = products.reduce((sum, p) => sum + (p.price || 0), 0);
-  const subtotalPEN = subtotal * exchangeRate;
+  const profit = products.reduce((sum, p) => sum + (p.profit_amount || 0), 0);
+  const subtotalPEN = (subtotal * exchangeRate);
   const shippingCostsPEN = shippingCostsUSD * exchangeRate;
   
   // Get profit from store

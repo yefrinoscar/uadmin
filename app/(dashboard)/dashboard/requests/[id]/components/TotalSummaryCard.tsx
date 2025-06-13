@@ -20,7 +20,6 @@ import {
   DrawerTrigger,
 } from '@/components/ui/drawer';
 import { PricingCalculator } from "@/components/pricing-calculator";
-import { usePricingCalculations } from '@/hooks/usePricingCalculations';
 import { useDebounce } from '@/hooks/use-debounce';
 
 export const TotalSummaryCard = () => {
@@ -32,34 +31,28 @@ export const TotalSummaryCard = () => {
 
   const {
     request,
+    shipping: shippingCostsUSD,
     finalPriceDisplayCurrency: displayCurrencyForFinalPrice,
 
     setCurrency,
     setFinalPrice
   } = useRequestDetailStore();
 
-  console.log('request', request);
-
   const currency = request?.currency ?? "PEN"; 
   const exchangeRate = request?.exchange_rate ?? 0;
   const price = request?.price ?? 0;
   const finalPrice = request?.final_price ?? 0;
+  
   const subTotal = request?.sub_total ?? 0;
   const profit = request?.profit ?? 0;
   const weight = request?.weight ?? 0;
 
-  const pricing = usePricingCalculations({
-    basePrice: subTotal,
-    weight,
-    initialMarginPEN: 0,
-    initialTaxPercentage: 0
-  });
 
-  const { totalCosts: shippingCostsUSD } = pricing;
-
-  console.log('subTotal', subTotal);
-  console.log('exchangeRate', exchangeRate);
+  console.log('profit', profit);
+  console.log('finalPrice', finalPrice);
+  console.log('price', price);
   
+
 
   const subTotalPEN = subTotal * exchangeRate;
   const shippingCostsPEN = shippingCostsUSD * exchangeRate;

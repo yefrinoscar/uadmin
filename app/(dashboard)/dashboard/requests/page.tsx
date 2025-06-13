@@ -43,7 +43,7 @@ export default async function RequestsPage(params: Props) {
 
       <div className="space-y-4">
         <HydrateClient>
-            <RequestsKPIs />
+          <RequestsKPIs />
 
           <RequestsFilters />
 

@@ -56,15 +56,28 @@ CREATE POLICY "Users can delete their own promotions"
   USING (auth.uid() = user_id);
 
 -- Allow public users to view only active promotions
-CREATE POLICY "Allow public users to view active promotions"
+CREATE POLICY "Public can view active promotions"
   ON public.promotions
   FOR SELECT
   TO anon
-  USING (
-    active = true 
-    AND start_date <= NOW()
-    AND end_date > NOW()
-  );
+  USING (active = true AND is_main = true);
+
+-- Ensure the images storage bucket exists for promotions
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('images', 'images', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Create policy to allow authenticated users to upload promotion images
+CREATE POLICY "Allow authenticated users to upload promotion images"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (bucket_id = 'images' AND (storage.foldername(name))[1] = 'promotions');
+
+-- Create policy to allow public to read promotion images
+CREATE POLICY "Allow public to read promotion images"
+ON storage.objects FOR SELECT
+TO public
+USING (bucket_id = 'images' AND (storage.foldername(name))[1] = 'promotions');
 
 -- Create updated_at trigger
 CREATE OR REPLACE FUNCTION public.handle_updated_at()

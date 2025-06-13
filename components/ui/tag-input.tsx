@@ -5,12 +5,14 @@ import { X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Command } from "@/components/ui/command"
 import { Command as CommandPrimitive } from "cmdk"
+import { cn } from "@/lib/utils"
 
 interface TagInputProps {
   placeholder?: string
   tags: string[]
   setTags: (tags: string[]) => void
   disabled?: boolean
+  hasError?: boolean
 }
 
 export function TagInput({
@@ -18,6 +20,7 @@ export function TagInput({
   tags,
   setTags,
   disabled = false,
+  hasError = false,
 }: TagInputProps) {
   const inputRef = React.useRef<HTMLInputElement>(null)
   const [inputValue, setInputValue] = React.useState("")
@@ -45,7 +48,10 @@ export function TagInput({
 
   return (
     <Command className="overflow-visible bg-transparent">
-      <div className="group border border-input px-3 py-2 text-sm ring-offset-background rounded-md focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+      <div className={cn(
+        "group border border-input px-3 py-2 text-sm ring-offset-background rounded-md focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 transition-[color,box-shadow]",
+        hasError && "border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40"
+      )}>
         <div className="flex flex-wrap gap-2">
           {tags.map((tag) => (
             <Badge key={tag} variant="secondary">
