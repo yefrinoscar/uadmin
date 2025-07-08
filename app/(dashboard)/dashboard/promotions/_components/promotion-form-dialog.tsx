@@ -207,7 +207,7 @@ export function PromotionFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[900px] flex flex-col">
+      <DialogContent className="sm:max-w-[1200px] flex flex-col">
         <DialogHeader>
           <DialogTitle>
             {editingPromotion ? "Editar Promoción" : "Nueva Promoción"}
@@ -431,7 +431,7 @@ export function PromotionFormDialog({
             <h3 className="font-semibold text-sm mb-4">Vista Previa</h3>
             <div className="rounded-xl overflow-hidden border shadow-sm">
               {imageLoading ? (
-                <div className="w-full h-[85px] relative flex items-center p-4 bg-gray-50">
+                <div className="w-full relative flex items-center p-4 bg-gray-50" style={{ aspectRatio: '256/17' }}>
                   <div className="flex flex-col gap-2 flex-1">
                     <Skeleton className="h-4 w-3/4" />
                     <Skeleton className="h-8 w-24 rounded-md" />
@@ -439,8 +439,9 @@ export function PromotionFormDialog({
                 </div>
               ) : (
                 <div 
-                  className="w-full h-[85px] relative flex items-center overflow-hidden"
+                  className="w-full relative flex items-center overflow-hidden"
                   style={{ 
+                    aspectRatio: '256/17',
                     backgroundImage: headerImage ? `url(${headerImage})` : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
@@ -459,12 +460,12 @@ export function PromotionFormDialog({
                   <div className="absolute inset-0 flex items-center px-4 z-10">
                     <div className="flex flex-col gap-2">
                       <p 
-                        className="text-base font-medium opacity-90 truncate"
+                        className="text-base font-bold opacity-90 truncate"
                         style={{ 
                           color: watchedValues.text_color || "#ffffff"
                         }}
                       >
-                        {watchedValues.description || 'Descripción de la promoción'}
+                        {watchedValues.title || 'Título de la promoción'}
                       </p>
                       <Button
                         variant="secondary"
