@@ -1,0 +1,28 @@
+========================================
+COLLECTIONS MODULE - SETUP COMMANDS
+========================================
+
+1. Install Required Package:
+   npm install @radix-ui/react-alert-dialog
+
+2. Run Database Migration:
+   supabase db push
+   
+   (Or apply the migration file manually through Supabase Dashboard:
+    supabase/migrations/20250531_create_collections_table.sql)
+
+3. Add Environment Variables to .env:
+   SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
+   SHOPIFY_ACCESS_TOKEN=your_shopify_admin_api_access_token
+
+4. Start Development Server:
+   npm run dev
+
+5. Navigate to:
+   http://localhost:3000/dashboard/collections
+
+========================================
+NOTES:
+- See SHOPIFY_SETUP.md for detailed Shopify API setup
+- See COLLECTIONS_MODULE_SUMMARY.md for complete feature list
+========================================

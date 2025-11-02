@@ -5,7 +5,9 @@ import {
   Files,
   FileSearch,
   FileSignature,
-  ShoppingBag
+  ShoppingBag,
+  FolderKanban,
+  Store
 } from "lucide-react";
 
 // Define the structure for a menu item, including potential children
@@ -30,12 +32,30 @@ export const menu: MenuItemConfig[] = [
     description: 'Gestiona tus pedidos y sus estados'
   },
   {
-    name: 'Promociones',
+    name: 'Tienda',
     url: '',
-    icon: BadgePercent,
-    path: '/dashboard/promotions',
+    icon: Store,
+    path: '/dashboard/store',
     disabled: false,
-    description: 'Gestiona las promociones activas que hay en la tienda'
+    description: 'Gestiona tu tienda online',
+    childs: [
+      {
+        name: 'Categorías',
+        url: '',
+        icon: FolderKanban,
+        path: '/dashboard/collections',
+        disabled: false,
+        description: 'Gestiona las colecciones de Shopify con imágenes y videos'
+      },
+      {
+        name: 'Promociones',
+        url: '',
+        icon: BadgePercent,
+        path: '/dashboard/promotions',
+        disabled: false,
+        description: 'Gestiona las promociones activas que hay en la tienda'
+      },
+    ]
   },
   {
     name: 'Ventas',
