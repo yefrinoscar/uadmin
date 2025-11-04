@@ -1,36 +1,139 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# uadmin - Purchase Request Management System
+
+Admin dashboard for managing purchase requests, collections, and exchange rates.
+
+## Tech Stack
+
+- **Framework**: Next.js 15 (App Router)
+- **Language**: TypeScript
+- **Database**: Supabase (PostgreSQL)
+- **Auth**: Clerk
+- **API**: tRPC + REST APIs
+- **State**: Zustand + React Query
+- **Styling**: Tailwind CSS + shadcn/ui
+- **Deployment**: Vercel
+
+## Project Structure
+
+```
+├── app/
+│   ├── (dashboard)/          # Protected dashboard routes
+│   ├── api/                  # REST API endpoints
+│   └── sign-in/              # Auth pages
+├── components/
+│   └── ui/                   # shadcn/ui components
+├── trpc/
+│   └── api/routers/          # tRPC routers
+├── store/                    # Zustand stores
+├── lib/                      # Utilities
+├── supabase/migrations/      # Database migrations
+└── docs/                     # Documentation (if needed)
+```
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Node.js 18+
+- npm/yarn/pnpm
+- Supabase account
+- Clerk account
+
+### Environment Variables
+
+Create `.env.local`:
+
+```env
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+
+# Clerk
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_key
+CLERK_SECRET_KEY=your_clerk_secret
+
+# APIs
+DECOLECTA_API_KEY=your_decolecta_key
+CRON_SECRET=your_cron_secret
+
+# Shopify (optional)
+SHOPIFY_STORE_DOMAIN=your_store.myshopify.com
+SHOPIFY_ACCESS_TOKEN=your_access_token
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Installation
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open [http://localhost:3000](http://localhost:3000)
 
-## Learn More
+## Development Rules
 
-To learn more about Next.js, take a look at the following resources:
+See `.aicontext/` folder for all development guidelines organized by topic.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Core principles: `.aicontext/core.md`
+- API patterns: `.aicontext/api.md`
+- Database rules: `.aicontext/database.md`
+- Components: `.aicontext/components.md`
+- State management: `.aicontext/state.md`
+- Security: `.aicontext/security.md`
+- Features: `.aicontext/features/`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Key Patterns
 
-## Deploy on Vercel
+**APIs**: Use `createAuthenticatedClient()` + `corsHeaders`  
+**State**: Zustand for global, React Query for server  
+**Components**: Server-first, "use client" when needed  
+**Database**: Always Supabase, proper error handling
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Features
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- 📋 Purchase Request Management
+- 💱 Exchange Rate System (auto-updated daily)
+- 🏪 Shopify Collections Integration
+- 👥 Client Management
+- 📦 Product Tracking
+- 🔐 Role-based Access Control
+
+## API Documentation
+
+### Public APIs
+
+- `GET /api/exchange-rate/current` - Current exchange rate
+- `GET /api/requests` - Create purchase request
+- `GET /api/promotions` - Promotions data
+
+### Protected APIs
+
+All dashboard APIs require authentication via Clerk.
+
+## Database
+
+Migrations in `supabase/migrations/`
+
+Run migrations:
+```bash
+supabase db push
+```
+
+## Deployment
+
+Deployed on Vercel with automatic deployments from main branch.
+
+### Cron Jobs
+
+- Exchange rate update: Daily at 9 AM Peru time (14:00 UTC)
+
+## Contributing
+
+1. Follow `.cursorrules` patterns
+2. Fix all errors before committing
+3. Test changes locally
+4. Write clear commit messages
+
+## License
+
+Private project
