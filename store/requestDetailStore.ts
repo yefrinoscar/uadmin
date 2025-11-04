@@ -227,7 +227,13 @@ export const useRequestDetailStore = create<RequestDetailState>((set, get) => ({
   // UI state
   setCalculations: (calculations) => set({ calculations }),
   setWeight: (weight) => set({ weight }),
-  setExchangeRate: (rate) => set({ exchangeRate: rate }),
+  setExchangeRate: (rate) => set((state) => ({
+    exchangeRate: rate,
+    request: {
+      ...state.request,
+      exchange_rate: rate
+    } as PurchaseRequest
+  })),
   setProfit: (profit) => set({ profit }),
   
   // Computed actions

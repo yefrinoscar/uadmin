@@ -288,7 +288,6 @@ export const requestsRouter = router({
         products: productsData || []
       };
 
-      console.log("formattedData", formattedData);
 
       const validationResult = PurchaseRequestSchema.safeParse(formattedData);
       if (!validationResult.success) {
@@ -509,10 +508,11 @@ export const requestsRouter = router({
       finalPrice: z.number().optional(),
       response: z.string().optional(),
       currency: z.string().optional(),
+      exchangeRate: z.number().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       try {
-        const { id, price, finalPrice, response, currency } = input;
+        const { id, price, finalPrice, response, currency, exchangeRate } = input;
 
         // First, let's check if the request exists
         const { data: existingRequest, error: findError } = await ctx.supabase
@@ -545,6 +545,10 @@ export const requestsRouter = router({
 
         if (currency !== undefined) {
           updateData.currency = currency;
+        }
+
+        if (exchangeRate !== undefined) {
+          updateData.exchange_rate = exchangeRate;
         }
 
         const { error: updateError } = await ctx.supabase

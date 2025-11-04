@@ -210,16 +210,13 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
     }
     setIsSaving(true);
     try {
-      // Note: currency and exchange_rate are monitored for changes but not yet saved
-      // by this mutation. The backend trpc.requests.updateRequest needs to be updated
-      // to accept these fields. Once updated, they should be added here.
       console.log('request1', request);
       await updateRequestMutation.mutateAsync({
         id: request.id,
         price: request.price ?? 0,
         finalPrice: request.final_price ?? 0,
-        currency: request.currency ?? undefined, // Temporarily removed due to linter error
-        // exchange_rate: request.exchange_rate, // Temporarily removed due to linter error
+        currency: request.currency ?? undefined,
+        exchangeRate: request.exchange_rate ?? undefined,
       });
       // On success, mutation's onSuccess (toast) and onSettled (refetch) run.
       // The refetch will update requestData, and if the save was successful,

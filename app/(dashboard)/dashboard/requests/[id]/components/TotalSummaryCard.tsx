@@ -21,13 +21,36 @@ import {
 } from '@/components/ui/drawer';
 import { PricingCalculator } from "@/components/pricing-calculator";
 import { useDebounce } from '@/hooks/use-debounce';
+import { useTRPC } from '@/trpc/client';
+import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 export const TotalSummaryCard = () => {
   const [enableRounding] = useState(true);
   const [suggestedPrices, setSuggestedPrices] = useState<{ value: number; label: string }[]>([]);
   const [selectedRoundedPrice, setSelectedRoundedPrice] = useState<number | null>(null);
   const [finalPriceValue, setFinalPriceValue] = useState('');
+  const [exchangeRateInput, setExchangeRateInput] = useState('');
+  const [isEditingExchangeRate, setIsEditingExchangeRate] = useState(false);
   const debounceFinalPrice = useDebounce(finalPriceValue, 500);
+
+  const trpc = useTRPC();
+  
+  // Fetch current exchange rate from database
+  const { data: currentExchangeRate, error: exchangeRateError } = useQuery({
+    ...trpc.exchangeRate.getCurrent.queryOptions(),
+    retry: 1,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  console.log('currentExchangeRate', currentExchangeRate);
+
+  // Log error for debugging
+  useEffect(() => {
+    if (exchangeRateError) {
+      console.error('Error fetching exchange rate:', exchangeRateError);
+    }
+  }, [exchangeRateError]);
 
   const {
     request,
@@ -35,11 +58,14 @@ export const TotalSummaryCard = () => {
     finalPriceDisplayCurrency: displayCurrencyForFinalPrice,
 
     setCurrency,
-    setFinalPrice
+    setFinalPrice,
+    setExchangeRate: setStoreExchangeRate
   } = useRequestDetailStore();
 
   const currency = request?.currency ?? "PEN"; 
-  const exchangeRate = request?.exchange_rate ?? 0;
+  // Prioritize: 1. Database exchange rate, 2. Request exchange rate, 3. Default (3.7)
+  const dbExchangeRate = currentExchangeRate?.sell_price ?? 0;
+  const exchangeRate = dbExchangeRate > 0 ? dbExchangeRate : (request?.exchange_rate ?? 3.7);
   const price = request?.price ?? 0;
   const finalPrice = request?.final_price ?? 0;
   
@@ -70,6 +96,13 @@ export const TotalSummaryCard = () => {
       calculatedAdjustmentPercentage = (difference / price) * 100;
     }
   }
+
+  // Initialize exchange rate input when data is loaded
+  useEffect(() => {
+    if (exchangeRate > 0) {
+      setExchangeRateInput(exchangeRate.toFixed(4));
+    }
+  }, [exchangeRate]);
 
   useEffect(() => {
     const basePriceForSuggestions = currency === "PEN" ? pricePEN : price;
@@ -117,6 +150,23 @@ export const TotalSummaryCard = () => {
     setSelectedRoundedPrice(null);
   };
 
+  const handleExchangeRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setExchangeRateInput(value);
+  };
+
+  const handleExchangeRateBlur = () => {
+    const newRate = parseFloat(exchangeRateInput);
+    if (!isNaN(newRate) && newRate > 0) {
+      setStoreExchangeRate(newRate);
+      setIsEditingExchangeRate(false);
+      toast.success('Tipo de cambio actualizado');
+    } else {
+      toast.error('Tipo de cambio inválido');
+      setExchangeRateInput(exchangeRate.toFixed(4));
+    }
+  };
+
   return (
     <Card className="shadow-lg">
       <CardHeader className="pb-3">
@@ -154,9 +204,35 @@ export const TotalSummaryCard = () => {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-          <div>Total Weight: {weight.toFixed(2)} kg</div>
-          <div className="text-right">ER: S/. {(exchangeRate || 0).toFixed(2)}</div> 
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="text-muted-foreground">Total Weight: {weight.toFixed(2)} kg</div>
+          <div className="text-right flex items-center justify-end gap-1">
+            <span className="text-muted-foreground">TC:</span>
+            {isEditingExchangeRate ? (
+              <input
+                type="number"
+                step="0.0001"
+                value={exchangeRateInput}
+                onChange={handleExchangeRateChange}
+                onBlur={handleExchangeRateBlur}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleExchangeRateBlur();
+                  }
+                }}
+                className="w-20 px-1 py-0.5 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                autoFocus
+              />
+            ) : (
+              <button
+                onClick={() => setIsEditingExchangeRate(true)}
+                className="font-semibold hover:text-primary transition-colors"
+                title="Click para editar"
+              >
+                S/. {(exchangeRate || 0).toFixed(4)}
+              </button>
+            )}
+          </div>
         </div>
 
         <Separator />
