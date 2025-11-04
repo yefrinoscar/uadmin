@@ -15,9 +15,15 @@ export function CollectionsList() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
-  const { data: collections = [], isLoading } = useSuspenseQuery(
+  const { data: collectionsData = [], isLoading } = useSuspenseQuery(
     trpc.collections.getAll.queryOptions()
   );
+
+  // Sort collections: active (published) first
+  const collections = [...collectionsData].sort((a, b) => {
+    if (a.published === b.published) return 0;
+    return a.published ? -1 : 1;
+  });
 
   const syncMutation = useMutation(
     trpc.collections.syncFromShopify.mutationOptions({
@@ -90,7 +96,7 @@ export function CollectionsList() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3">
             {collections?.map((collection, index) => (
               <motion.div
                 key={collection.id}
