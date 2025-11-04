@@ -1,5 +1,5 @@
 "use client"
-import { MessageSquareDot, BadgePercent, Calculator  } from "lucide-react"
+import { ChevronRight } from "lucide-react"
 import {
   Sidebar as ShadcnSidebar,
   SidebarContent,
@@ -10,34 +10,14 @@ import {
   SidebarMenuButton,
   SidebarGroup,
   SidebarGroupLabel,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
 import Image from "next/image"
 import { NavUser } from "./nav-user"
 import { usePathname } from "next/navigation"
-
-const menu = [
-  {
-    name: 'Pedidos',
-    url: '',
-    icon: MessageSquareDot,
-    path: '/dashboard/requests',
-    disabled: false
-  },
-  {
-    name: 'Promociones',
-    url: '',
-    icon: BadgePercent,
-    path: '/dashboard/promotions',
-    disabled: true
-  },
-  {
-    name: 'Calculadora',
-    url: '',
-    icon: Calculator,
-    path: '/dashboard/calculator',
-    disabled: true
-  }
-]
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@radix-ui/react-collapsible"
+import { menu } from '@/config/menu'
 
 export function Sidebar({ user }: {
   user: {
@@ -47,8 +27,6 @@ export function Sidebar({ user }: {
   }
 }) {
   const pathname = usePathname();
-  console.log(pathname);
-
 
   return (
     <ShadcnSidebar className="border-r border-primary/10 disabled:pointer-events-none">
@@ -60,14 +38,45 @@ export function Sidebar({ user }: {
           <SidebarGroupLabel>Tienda</SidebarGroupLabel>
           <SidebarMenu>
             {menu.map((item) => (
-              <SidebarMenuItem key={item.name} >
-                <SidebarMenuButton asChild isActive={pathname === item.path} aria-disabled={item.disabled}>
-                  <a href={item.url}>
-                    <item.icon />
-                    <span>{item.name}</span>
-                  </a>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              item.childs && item.childs.length > 0 ?
+                <Collapsible key={item.name} asChild defaultOpen className="group/collapsible">
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton tooltip={item.name}>
+                        {item.icon && <item.icon />}
+                        <span>{item.name}</span>
+                        <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {
+                          item.childs.map((child) => (
+                            <SidebarMenuSubItem key={child.name} >
+                              <SidebarMenuButton asChild isActive={pathname.startsWith(child.path)} aria-disabled={item.disabled}>
+                                <a href={child.path}>
+                                  <child.icon />
+                                  <span>{child.name}</span>
+                                </a>
+                              </SidebarMenuButton>
+                            </SidebarMenuSubItem>
+                          ))
+                        }
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+                :
+                <SidebarMenuItem key={item.name} >
+                  <SidebarMenuButton asChild isActive={pathname.startsWith(item.path)} aria-disabled={item.disabled}>
+                    <a href={item.path}>
+                      <item.icon />
+                      <span>{item.name} </span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+
+
             ))}
           </SidebarMenu>
         </SidebarGroup>
@@ -87,4 +96,3 @@ export function Sidebar({ user }: {
     </ShadcnSidebar>
   )
 }
-
