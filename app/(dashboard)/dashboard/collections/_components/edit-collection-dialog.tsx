@@ -1,23 +1,21 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Collection } from "@/trpc/api/routers/collections";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { useTRPC } from "@/trpc/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Upload, X, Image as ImageIcon, Video as VideoIcon } from "lucide-react";
+import { X, Image as ImageIcon, Video as VideoIcon, Loader2 } from "lucide-react";
 
 interface EditCollectionDialogProps {
   collection: Collection;
@@ -34,6 +32,10 @@ export function EditCollectionDialog({
   const [videoUrl, setVideoUrl] = useState(collection.video_url || "");
   const [bannerPreview, setBannerPreview] = useState(collection.banner_url || "");
   const [videoPreview, setVideoPreview] = useState(collection.video_url || "");
+  const [bannerLoading, setBannerLoading] = useState(false);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [optimisticBanner, setOptimisticBanner] = useState<string | null>(null);
+  const [optimisticVideo, setOptimisticVideo] = useState<string | null>(null);
   
   const bannerInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -41,14 +43,93 @@ export function EditCollectionDialog({
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
+  // Sync state when collection changes or dialog opens
+  useEffect(() => {
+    setBannerUrl(collection.banner_url || "");
+    setVideoUrl(collection.video_url || "");
+    setBannerPreview(collection.banner_url || "");
+    setVideoPreview(collection.video_url || "");
+    setBannerLoading(false);
+    setVideoLoading(false);
+    setOptimisticBanner(null);
+    setOptimisticVideo(null);
+  }, [collection.banner_url, collection.video_url]);
+
   const updateMutation = useMutation(
     trpc.collections.update.mutationOptions({
-      onSuccess: () => {
-        toast.success("Colección actualizada");
-        queryClient.invalidateQueries({ queryKey: [['collections', 'getAll']] });
-        onOpenChange(false);
+      onMutate: async (variables) => {
+        // Cancel any outgoing refetches
+        await queryClient.cancelQueries({ queryKey: [['collections', 'getAll']] });
+
+        // Snapshot the previous value
+        const previousCollections = queryClient.getQueryData([['collections', 'getAll']]);
+
+        // Optimistically update the cache
+        queryClient.setQueryData([['collections', 'getAll']], (old: any) => {
+          if (!old) return old;
+          return old.map((collection: Collection) => {
+            if (collection.id === variables.id) {
+              return {
+                ...collection,
+                banner_url: variables.banner_url,
+                video_url: variables.video_url,
+              };
+            }
+            return collection;
+          });
+        });
+
+        // Set loading states
+        if (variables.banner_url !== null && variables.banner_url !== undefined) {
+          setBannerLoading(true);
+        }
+        if (variables.video_url !== null && variables.video_url !== undefined) {
+          setVideoLoading(true);
+        }
+
+        return { previousCollections };
       },
-      onError: (error: any) => {
+      onSuccess: (data, variables) => {
+        toast.success("Colección actualizada");
+
+        // Update local state with server data
+        if (variables.banner_url !== null && variables.banner_url !== undefined) {
+          setBannerUrl(data.banner_url || "");
+          setBannerPreview(data.banner_url || "");
+          setBannerLoading(false);
+          setOptimisticBanner(null);
+        }
+        if (variables.video_url !== null && variables.video_url !== undefined) {
+          setVideoUrl(data.video_url || "");
+          setVideoPreview(data.video_url || "");
+          setVideoLoading(false);
+          setOptimisticVideo(null);
+        }
+
+        queryClient.invalidateQueries({ queryKey: [['collections', 'getAll']] });
+      },
+      onError: (error: any, variables, context) => {
+        // Revert optimistic update
+        if (context?.previousCollections) {
+          queryClient.setQueryData([['collections', 'getAll']], context.previousCollections);
+        }
+
+        // Reset loading states
+        setBannerLoading(false);
+        setVideoLoading(false);
+
+        // Revert local state if it was an optimistic update
+        if (optimisticBanner) {
+          setBannerUrl(collection.banner_url || "");
+          setBannerPreview(collection.banner_url || "");
+          setOptimisticBanner(null);
+        }
+        if (optimisticVideo) {
+          setVideoUrl(collection.video_url || "");
+          setVideoPreview(collection.video_url || "");
+          setOptimisticVideo(null);
+        }
+
         toast.error("Error al actualizar", {
           description: error.message,
         });
@@ -63,12 +144,29 @@ export function EditCollectionDialog({
         toast.error("El banner no debe superar los 10MB");
         return;
       }
-      
+
+      // Create immediate optimistic preview
+      const objectUrl = URL.createObjectURL(file);
+      setOptimisticBanner(objectUrl);
+      setBannerPreview(objectUrl);
+      setBannerLoading(true);
+
       const reader = new FileReader();
       reader.onloadend = () => {
         const result = reader.result as string;
         setBannerUrl(result);
-        setBannerPreview(result);
+
+        // Call mutation with data URL (optimistic update will happen in onMutate)
+        updateMutation.mutate({
+          id: collection.id!,
+          banner_url: result,
+          video_url: videoUrl || null,
+        });
+
+        // Clean up object URL after a short delay to ensure image is loaded
+        setTimeout(() => {
+          URL.revokeObjectURL(objectUrl);
+        }, 1000);
       };
       reader.readAsDataURL(file);
     }
@@ -81,25 +179,32 @@ export function EditCollectionDialog({
         toast.error("El video no debe superar los 50MB");
         return;
       }
-      
+
+      // Create immediate optimistic preview
+      const objectUrl = URL.createObjectURL(file);
+      setOptimisticVideo(objectUrl);
+      setVideoPreview(objectUrl);
+      setVideoLoading(true);
+
       const reader = new FileReader();
       reader.onloadend = () => {
         const result = reader.result as string;
         setVideoUrl(result);
-        setVideoPreview(result);
+
+        // Call mutation with data URL (optimistic update will happen in onMutate)
+        updateMutation.mutate({
+          id: collection.id!,
+          banner_url: bannerUrl || null,
+          video_url: result,
+        });
+
+        // Clean up object URL after a short delay to ensure video is loaded
+        setTimeout(() => {
+          URL.revokeObjectURL(objectUrl);
+        }, 1000);
       };
       reader.readAsDataURL(file);
     }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    updateMutation.mutate({
-      id: collection.id!,
-      banner_url: bannerUrl || null,
-      video_url: videoUrl || null,
-    });
   };
 
   const removeBanner = () => {
@@ -108,6 +213,12 @@ export function EditCollectionDialog({
     if (bannerInputRef.current) {
       bannerInputRef.current.value = "";
     }
+    // Auto-save removal
+    updateMutation.mutate({
+      id: collection.id!,
+      banner_url: null,
+      video_url: videoUrl || null,
+    });
   };
 
   const removeVideo = () => {
@@ -116,6 +227,12 @@ export function EditCollectionDialog({
     if (videoInputRef.current) {
       videoInputRef.current.value = "";
     }
+    // Auto-save removal
+    updateMutation.mutate({
+      id: collection.id!,
+      banner_url: bannerUrl || null,
+      video_url: null,
+    });
   };
 
   return (
@@ -139,7 +256,7 @@ export function EditCollectionDialog({
           </div>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="space-y-6">
           {/* Collection Info */}
           {collection.description && (
             <div className="space-y-2">
@@ -160,12 +277,18 @@ export function EditCollectionDialog({
                   alt="Banner preview"
                   className="w-full h-48 object-cover rounded-lg border"
                 />
+                {bannerLoading && (
+                  <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-white" />
+                  </div>
+                )}
                 <Button
                   type="button"
                   variant="destructive"
                   size="icon"
                   className="absolute top-2 right-2"
                   onClick={removeBanner}
+                  disabled={bannerLoading}
                 >
                   <X className="h-4 w-4" />
                 </Button>
@@ -205,12 +328,18 @@ export function EditCollectionDialog({
                   controls
                   className="w-full h-48 object-cover rounded-lg border"
                 />
+                {videoLoading && (
+                  <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-white" />
+                  </div>
+                )}
                 <Button
                   type="button"
                   variant="destructive"
                   size="icon"
                   className="absolute top-2 right-2"
                   onClick={removeVideo}
+                  disabled={videoLoading}
                 >
                   <X className="h-4 w-4" />
                 </Button>
@@ -239,19 +368,7 @@ export function EditCollectionDialog({
             />
           </div>
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? "Guardando..." : "Guardar Cambios"}
-            </Button>
-          </DialogFooter>
-        </form>
+        </div>
       </DialogContent>
     </Dialog>
   );

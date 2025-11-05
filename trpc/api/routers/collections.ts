@@ -318,6 +318,45 @@ export const collectionsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id, ...updateData } = input;
 
+      // Get current collection to check for existing files
+      const { data: currentCollection } = await ctx.supabase
+        .from('collections')
+        .select('banner_url, video_url')
+        .eq('id', id)
+        .single();
+
+      // Delete old banner file if it exists and we're uploading a new one
+      if (currentCollection?.banner_url && updateData.banner_url && updateData.banner_url.startsWith('data:image') && currentCollection.banner_url.includes('/collections/')) {
+        const fileName = currentCollection.banner_url.split('/').pop();
+        if (fileName) {
+          await ctx.supabase.storage.from('images').remove([`collections/${fileName}`]);
+        }
+      }
+
+      // Delete old video file if it exists and we're uploading a new one
+      if (currentCollection?.video_url && updateData.video_url && updateData.video_url.startsWith('data:video') && currentCollection.video_url.includes('/collections/')) {
+        const fileName = currentCollection.video_url.split('/').pop();
+        if (fileName) {
+          await ctx.supabase.storage.from('images').remove([`collections/${fileName}`]);
+        }
+      }
+
+      // Delete old banner file if we're removing it (setting to null)
+      if (currentCollection?.banner_url && updateData.banner_url === null && currentCollection.banner_url.includes('/collections/')) {
+        const fileName = currentCollection.banner_url.split('/').pop();
+        if (fileName) {
+          await ctx.supabase.storage.from('images').remove([`collections/${fileName}`]);
+        }
+      }
+
+      // Delete old video file if we're removing it (setting to null)
+      if (currentCollection?.video_url && updateData.video_url === null && currentCollection.video_url.includes('/collections/')) {
+        const fileName = currentCollection.video_url.split('/').pop();
+        if (fileName) {
+          await ctx.supabase.storage.from('images').remove([`collections/${fileName}`]);
+        }
+      }
+
       // Process banner upload if it's a data URL
       let processedData = { ...updateData };
 
