@@ -6,11 +6,11 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(
   request: Request,
-  { params }: { params: { handle: string } }
+  { params }: { params: Promise<{ handle: string }> }
 ) {
   try {
     const supabase = createAuthenticatedClient();
-    const { handle } = params;
+    const { handle } = await params;
 
     const { data: collection, error } = await supabase
       .from('collections')
