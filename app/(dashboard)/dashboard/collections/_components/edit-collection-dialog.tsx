@@ -58,6 +58,15 @@ export function EditCollectionDialog({
   const updateMutation = useMutation(
     trpc.collections.update.mutationOptions({
       onMutate: async (variables) => {
+        const hasBannerUpdate = Object.prototype.hasOwnProperty.call(
+          variables,
+          "banner_url"
+        );
+        const hasVideoUpdate = Object.prototype.hasOwnProperty.call(
+          variables,
+          "video_url"
+        );
+
         // Cancel any outgoing refetches
         await queryClient.cancelQueries({ queryKey: [['collections', 'getAll']] });
 
@@ -71,8 +80,8 @@ export function EditCollectionDialog({
             if (collection.id === variables.id) {
               return {
                 ...collection,
-                banner_url: variables.banner_url,
-                video_url: variables.video_url,
+                ...(hasBannerUpdate ? { banner_url: variables.banner_url ?? null } : {}),
+                ...(hasVideoUpdate ? { video_url: variables.video_url ?? null } : {}),
               };
             }
             return collection;
@@ -80,51 +89,83 @@ export function EditCollectionDialog({
         });
 
         // Set loading states
-        if (variables.banner_url !== null && variables.banner_url !== undefined) {
+        if (hasBannerUpdate) {
           setBannerLoading(true);
         }
-        if (variables.video_url !== null && variables.video_url !== undefined) {
+        if (hasVideoUpdate) {
           setVideoLoading(true);
         }
 
         return { previousCollections };
       },
       onSuccess: (data, variables) => {
-        toast.success("Colección actualizada");
+        const hasBannerUpdate = Object.prototype.hasOwnProperty.call(
+          variables,
+          "banner_url"
+        );
+        const hasVideoUpdate = Object.prototype.hasOwnProperty.call(
+          variables,
+          "video_url"
+        );
+
+        const updatedFields: string[] = [];
 
         // Update local state with server data
-        if (variables.banner_url !== null && variables.banner_url !== undefined) {
+        if (hasBannerUpdate) {
           setBannerUrl(data.banner_url || "");
           setBannerPreview(data.banner_url || "");
           setBannerLoading(false);
           setOptimisticBanner(null);
+          updatedFields.push("Banner");
         }
-        if (variables.video_url !== null && variables.video_url !== undefined) {
+        if (hasVideoUpdate) {
           setVideoUrl(data.video_url || "");
           setVideoPreview(data.video_url || "");
           setVideoLoading(false);
           setOptimisticVideo(null);
+          updatedFields.push("Video");
+        }
+
+        if (updatedFields.length > 0) {
+          toast.success(
+            updatedFields.length === 2
+              ? "Banner y video actualizados"
+              : `${updatedFields[0]} actualizado`
+          );
         }
 
         queryClient.invalidateQueries({ queryKey: [['collections', 'getAll']] });
       },
       onError: (error: any, variables, context) => {
+        const hasBannerUpdate = Object.prototype.hasOwnProperty.call(
+          variables,
+          "banner_url"
+        );
+        const hasVideoUpdate = Object.prototype.hasOwnProperty.call(
+          variables,
+          "video_url"
+        );
+
         // Revert optimistic update
         if (context?.previousCollections) {
           queryClient.setQueryData([['collections', 'getAll']], context.previousCollections);
         }
 
         // Reset loading states
-        setBannerLoading(false);
-        setVideoLoading(false);
+        if (hasBannerUpdate) {
+          setBannerLoading(false);
+        }
+        if (hasVideoUpdate) {
+          setVideoLoading(false);
+        }
 
         // Revert local state if it was an optimistic update
-        if (optimisticBanner) {
+        if (hasBannerUpdate && optimisticBanner) {
           setBannerUrl(collection.banner_url || "");
           setBannerPreview(collection.banner_url || "");
           setOptimisticBanner(null);
         }
-        if (optimisticVideo) {
+        if (hasVideoUpdate && optimisticVideo) {
           setVideoUrl(collection.video_url || "");
           setVideoPreview(collection.video_url || "");
           setOptimisticVideo(null);
@@ -160,7 +201,6 @@ export function EditCollectionDialog({
         updateMutation.mutate({
           id: collection.id!,
           banner_url: result,
-          video_url: videoUrl || null,
         });
 
         // Clean up object URL after a short delay to ensure image is loaded
@@ -194,7 +234,6 @@ export function EditCollectionDialog({
         // Call mutation with data URL (optimistic update will happen in onMutate)
         updateMutation.mutate({
           id: collection.id!,
-          banner_url: bannerUrl || null,
           video_url: result,
         });
 
@@ -217,7 +256,6 @@ export function EditCollectionDialog({
     updateMutation.mutate({
       id: collection.id!,
       banner_url: null,
-      video_url: videoUrl || null,
     });
   };
 
@@ -230,7 +268,6 @@ export function EditCollectionDialog({
     // Auto-save removal
     updateMutation.mutate({
       id: collection.id!,
-      banner_url: bannerUrl || null,
       video_url: null,
     });
   };
