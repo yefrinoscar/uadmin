@@ -88,8 +88,8 @@ export function EditCollectionDialog({
             if (collection.id === variables.id) {
               return {
                 ...collection,
-                banner_url: variables.banner_url,
-                video_url: variables.video_url,
+                ...(bannerProvided ? { banner_url: variables.banner_url ?? null } : {}),
+                ...(videoProvided ? { video_url: variables.video_url ?? null } : {}),
               };
             }
             return collection;
@@ -97,27 +97,30 @@ export function EditCollectionDialog({
         });
 
         // Set loading states
-        if (variables.banner_url !== null && variables.banner_url !== undefined) {
+        if (bannerProvided && variables.banner_url !== null) {
           setBannerLoading(true);
         }
-        if (variables.video_url !== null && variables.video_url !== undefined) {
+        if (videoProvided && variables.video_url !== null) {
           setVideoLoading(true);
         }
 
         return { previousCollections };
       },
       onSuccess: (data, variables) => {
+        const bannerProvided = Object.prototype.hasOwnProperty.call(variables, "banner_url");
+        const videoProvided = Object.prototype.hasOwnProperty.call(variables, "video_url");
+
         toast.success("Colección actualizada");
 
         // Update local state with server data
-        if (variables.banner_url !== null && variables.banner_url !== undefined) {
+        if (bannerProvided) {
           setBannerUrl(data.banner_url || "");
           setBannerPreview(data.banner_url || "");
           setBannerLoading(false);
           setOptimisticBanner(null);
           updatedFields.push("Banner");
         }
-        if (variables.video_url !== null && variables.video_url !== undefined) {
+        if (videoProvided) {
           setVideoUrl(data.video_url || "");
           setVideoPreview(data.video_url || "");
           setVideoLoading(false);
@@ -136,6 +139,9 @@ export function EditCollectionDialog({
         queryClient.invalidateQueries({ queryKey: [['collections', 'getAll']] });
       },
       onError: (error: any, variables, context) => {
+        const bannerProvided = Object.prototype.hasOwnProperty.call(variables, "banner_url");
+        const videoProvided = Object.prototype.hasOwnProperty.call(variables, "video_url");
+
         // Revert optimistic update
         if (context?.previousCollections) {
           queryClient.setQueryData([['collections', 'getAll']], context.previousCollections);
@@ -150,12 +156,12 @@ export function EditCollectionDialog({
         }
 
         // Revert local state if it was an optimistic update
-        if (optimisticBanner) {
+        if (bannerProvided && optimisticBanner) {
           setBannerUrl(collection.banner_url || "");
           setBannerPreview(collection.banner_url || "");
           setOptimisticBanner(null);
         }
-        if (optimisticVideo) {
+        if (videoProvided && optimisticVideo) {
           setVideoUrl(collection.video_url || "");
           setVideoPreview(collection.video_url || "");
           setOptimisticVideo(null);
