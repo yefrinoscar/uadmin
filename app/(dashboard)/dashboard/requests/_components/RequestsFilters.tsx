@@ -193,7 +193,7 @@ export function RequestsFilters() {
   ];
 
   return (
-    <div className="flex flex-wrap gap-4 justify-between items-center">
+    <div className="flex flex-wrap gap-4 justify-between items-center w-full max-w-full">
       <div className="flex flex-wrap gap-4 items-center">
         <div className="flex items-center space-x-2">
           <Input

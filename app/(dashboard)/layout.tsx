@@ -21,10 +21,10 @@ export default async function DashboardLayout({
 
   return (
       <SidebarProvider defaultOpen={defaultOpen}>
-        <div className="flex h-screen w-full">
+        <div className="flex h-screen w-full overflow-hidden">
           <Sidebar user={{ name, email, avatar }} />
-          <main className="px-8 py-2  flex-grow">
-            <div className="mx-auto container">
+          <main className="px-8 py-2 flex-grow overflow-y-auto overflow-x-hidden">
+            <div className="mx-auto container max-w-full">
               {children}
             </div>
             <NavigationProgress />
