@@ -88,8 +88,8 @@ export function EditCollectionDialog({
             if (collection.id === variables.id) {
               return {
                 ...collection,
-                ...(bannerProvided ? { banner_url: variables.banner_url ?? null } : {}),
-                ...(videoProvided ? { video_url: variables.video_url ?? null } : {}),
+                banner_url: variables.banner_url,
+                video_url: variables.video_url,
               };
             }
             return collection;
@@ -97,57 +97,65 @@ export function EditCollectionDialog({
         });
 
         // Set loading states
-        if (bannerProvided && variables.banner_url !== null) {
+        if (variables.banner_url !== null && variables.banner_url !== undefined) {
           setBannerLoading(true);
         }
-        if (videoProvided && variables.video_url !== null) {
+        if (variables.video_url !== null && variables.video_url !== undefined) {
           setVideoLoading(true);
         }
 
         return { previousCollections };
       },
       onSuccess: (data, variables) => {
-        const bannerProvided = Object.prototype.hasOwnProperty.call(variables, "banner_url");
-        const videoProvided = Object.prototype.hasOwnProperty.call(variables, "video_url");
-
         toast.success("Colección actualizada");
 
         // Update local state with server data
-        if (bannerProvided) {
+        if (variables.banner_url !== null && variables.banner_url !== undefined) {
           setBannerUrl(data.banner_url || "");
           setBannerPreview(data.banner_url || "");
           setBannerLoading(false);
           setOptimisticBanner(null);
+          updatedFields.push("Banner");
         }
-        if (videoProvided) {
+        if (variables.video_url !== null && variables.video_url !== undefined) {
           setVideoUrl(data.video_url || "");
           setVideoPreview(data.video_url || "");
           setVideoLoading(false);
           setOptimisticVideo(null);
+          updatedFields.push("Video");
+        }
+
+        if (updatedFields.length > 0) {
+          toast.success(
+            updatedFields.length === 2
+              ? "Banner y video actualizados"
+              : `${updatedFields[0]} actualizado`
+          );
         }
 
         queryClient.invalidateQueries({ queryKey: [['collections', 'getAll']] });
       },
       onError: (error: any, variables, context) => {
-        const bannerProvided = Object.prototype.hasOwnProperty.call(variables, "banner_url");
-        const videoProvided = Object.prototype.hasOwnProperty.call(variables, "video_url");
-
         // Revert optimistic update
         if (context?.previousCollections) {
           queryClient.setQueryData([['collections', 'getAll']], context.previousCollections);
         }
 
         // Reset loading states
-        setBannerLoading(false);
-        setVideoLoading(false);
+        if (hasBannerUpdate) {
+          setBannerLoading(false);
+        }
+        if (hasVideoUpdate) {
+          setVideoLoading(false);
+        }
 
         // Revert local state if it was an optimistic update
-        if (bannerProvided && optimisticBanner) {
+        if (optimisticBanner) {
           setBannerUrl(collection.banner_url || "");
           setBannerPreview(collection.banner_url || "");
           setOptimisticBanner(null);
         }
-        if (videoProvided && optimisticVideo) {
+        if (optimisticVideo) {
           setVideoUrl(collection.video_url || "");
           setVideoPreview(collection.video_url || "");
           setOptimisticVideo(null);
