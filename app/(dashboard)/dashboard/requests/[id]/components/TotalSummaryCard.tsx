@@ -3,372 +3,440 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { useRequestDetailStore } from '@/store/requestDetailStore';
-import { Sparkles, ArrowDown, ArrowUp, Calculator } from 'lucide-react';
-import { generateAttractivePrices, formatCurrency } from '@/lib/utils';
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from '@/components/ui/drawer';
-import { PricingCalculator } from "@/components/pricing-calculator";
+import { Edit2, Check, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useTRPC } from '@/trpc/client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 export const TotalSummaryCard = () => {
-  const [enableRounding] = useState(true);
-  const [suggestedPrices, setSuggestedPrices] = useState<{ value: number; label: string }[]>([]);
-  const [selectedRoundedPrice, setSelectedRoundedPrice] = useState<number | null>(null);
-  const [finalPriceValue, setFinalPriceValue] = useState('');
-  const [exchangeRateInput, setExchangeRateInput] = useState('');
-  const [isEditingExchangeRate, setIsEditingExchangeRate] = useState(false);
-  const debounceFinalPrice = useDebounce(finalPriceValue, 500);
-
+  const [finalPriceInput, setFinalPriceInput] = useState('');
+  const [isEditingFinalPrice, setIsEditingFinalPrice] = useState(false);
+  const [showShippingDetails, setShowShippingDetails] = useState(false);
+  const [profitInput, setProfitInput] = useState('');
+  const [isEditingProfit, setIsEditingProfit] = useState(false);
+  const [showProfitDetails, setShowProfitDetails] = useState(false);
+  const [additionalProfitInput, setAdditionalProfitInput] = useState('');
+  const [isEditingAdditionalProfit, setIsEditingAdditionalProfit] = useState(false);
+  
+  const debouncedFinalPrice = useDebounce(finalPriceInput, 500);
   const trpc = useTRPC();
   
-  // Fetch current exchange rate from database
-  const { data: currentExchangeRate, error: exchangeRateError } = useQuery({
+  // Obtener tipo de cambio actual de la base de datos
+  const { data: currentExchangeRate } = useQuery({
     ...trpc.exchangeRate.getCurrent.queryOptions(),
     retry: 1,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000,
   });
 
-  console.log('currentExchangeRate', currentExchangeRate);
-
-  // Log error for debugging
-  useEffect(() => {
-    if (exchangeRateError) {
-      console.error('Error fetching exchange rate:', exchangeRateError);
-    }
-  }, [exchangeRateError]);
+  // Mutación para actualizar el request
+  const updateRequestMutation = useMutation(
+    trpc.requests.updateRequest.mutationOptions()
+  );
 
   const {
     request,
     shipping: shippingCostsUSD,
-    finalPriceDisplayCurrency: displayCurrencyForFinalPrice,
-
-    setCurrency,
     setFinalPrice,
     setExchangeRate: setStoreExchangeRate
   } = useRequestDetailStore();
 
-  const currency = request?.currency ?? "PEN"; 
-  // Prioritize: 1. Database exchange rate, 2. Request exchange rate, 3. Default (3.7)
-  const dbExchangeRate = currentExchangeRate?.sell_price ?? 0;
-  const exchangeRate = dbExchangeRate > 0 ? dbExchangeRate : (request?.exchange_rate ?? 3.7);
-  const price = request?.price ?? 0;
-  const finalPrice = request?.final_price ?? 0;
+  // ============================================================================
+  // ESTRUCTURA DE PRECIOS
+  // ============================================================================
+  // 1. Subtotal (USD) = Suma de precios base de productos
+  // 2. Envío (USD) = Costos de envío calculados
+  // 3. Precio Calculado (USD) = Subtotal + Envío + Ganancia Base
+  // 4. Precio Final (USD) = Precio ajustado por usuario (nunca menor a costos)
+  // 5. Ganancia Total (USD) = Precio Final - (Subtotal + Envío)
+  // ============================================================================
+
+  // Usar tipo de cambio de COMPRA (buy_price) para convertir USD a PEN
+  const buyExchangeRate = currentExchangeRate && 'buy_price' in currentExchangeRate
+    ? currentExchangeRate.buy_price ?? 0
+    : 0;
+  const officialExchangeRate = buyExchangeRate > 0 ? buyExchangeRate : (request?.exchange_rate ?? 3.65);
+  
+  // Tipo de cambio ajustado (+0.02)
+  const exchangeRateAdjustment = 0.02;
+  const exchangeRate = officialExchangeRate + exchangeRateAdjustment;
   
   const subTotal = request?.sub_total ?? 0;
-  const profit = request?.profit ?? 0;
   const weight = request?.weight ?? 0;
-
-
-  console.log('profit', profit);
-  console.log('finalPrice', finalPrice);
-  console.log('price', price);
   
-
-
+  // Ganancia de productos (en PEN, convertir a USD)
+  const productsProfitPEN = request?.products?.reduce((sum, p) => sum + (p.profit_amount || 0), 0) ?? 0;
+  const productsProfitUSD = productsProfitPEN / officialExchangeRate;
+  
+  // Ganancia adicional (guardada en request.profit en USD)
+  const additionalProfitUSD = request?.profit ?? 0;
+  
+  // Ganancia total = ganancia de productos + ganancia adicional
+  const totalProfitUSD = productsProfitUSD + additionalProfitUSD;
+  
+  // Desglose de costos de envío
+  const SHIPPING_PER_KG = 7; // $7 por kilo
+  const PROCESSING_FEE = 7;  // $7 tramitación
+  const HANDLING_FEE = 5;    // $5 movilidad
+  
+  const shippingByWeight = weight * SHIPPING_PER_KG;
+  const totalShippingCost = shippingByWeight + PROCESSING_FEE + HANDLING_FEE;
+  
+  // Costos totales (mínimo a cubrir)
+  const totalCostsUSD = subTotal + totalShippingCost;
+  
+  // Precio calculado (costo + ganancia de productos)
+  const calculatedPriceUSD = totalCostsUSD + productsProfitUSD;
+  
+  // Precio final (ajustado, nunca menor a costos)
+  const requestedFinalPrice = request?.final_price ?? calculatedPriceUSD;
+  const finalPriceUSD = Math.max(requestedFinalPrice, totalCostsUSD);
+  
+  const profitMarginPercent = totalCostsUSD > 0 ? (totalProfitUSD / totalCostsUSD) * 100 : 0;
+  
+  // Conversiones a PEN
+  const totalCostsPEN = totalCostsUSD * exchangeRate;
+  const calculatedPricePEN = calculatedPriceUSD * exchangeRate;
+  const finalPricePEN = finalPriceUSD * exchangeRate;
+  const totalProfitPEN = totalProfitUSD * exchangeRate;
   const subTotalPEN = subTotal * exchangeRate;
-  const shippingCostsPEN = shippingCostsUSD * exchangeRate;
-  const pricePEN = price * exchangeRate;
-  const finalPricePEN = finalPrice * exchangeRate;
-  const actualProfitUSD = profit + (finalPrice - price);
-  const actualProfitPEN = actualProfitUSD * exchangeRate;
-  console.log('actualProfitPEN', actualProfitPEN);
-  console.log('exchangeRate', exchangeRate);
+  const shippingCostsPEN = totalShippingCost * exchangeRate;
+  const shippingByWeightPEN = shippingByWeight * exchangeRate;
+  const processingFeePEN = PROCESSING_FEE * exchangeRate;
+  const handlingFeePEN = HANDLING_FEE * exchangeRate;
+  const productsProfitPENDisplay = productsProfitUSD * exchangeRate;
+  const additionalProfitPEN = additionalProfitUSD * exchangeRate;
 
-  let calculatedAdjustmentPercentage = 0;
-  if (price > 0) {
-    const difference = price - finalPrice;
-    if (Math.abs(difference) > 0.001) {
-      calculatedAdjustmentPercentage = (difference / price) * 100;
-    }
-  }
+  // Ajuste de precio
+  const priceAdjustment = finalPriceUSD - calculatedPriceUSD;
+  const hasAdjustment = Math.abs(priceAdjustment) > 0.01;
 
-  // Initialize exchange rate input when data is loaded
+  // Inicializar inputs
   useEffect(() => {
-    if (exchangeRate > 0) {
-      setExchangeRateInput(exchangeRate.toFixed(4));
-    }
-  }, [exchangeRate]);
+    setFinalPriceInput(finalPriceUSD.toFixed(2));
+  }, [finalPriceUSD]);
 
   useEffect(() => {
-    const basePriceForSuggestions = currency === "PEN" ? pricePEN : price;
+    setProfitInput(totalProfitUSD.toFixed(2));
+  }, [totalProfitUSD]);
 
-    if (basePriceForSuggestions > 0) {
-      const suggestions = generateAttractivePrices(basePriceForSuggestions, currency as "PEN" | "USD");
-      setSuggestedPrices(suggestions);
+  useEffect(() => {
+    setAdditionalProfitInput(additionalProfitUSD.toFixed(2));
+  }, [additionalProfitUSD]);
+
+  useEffect(() => {
+    if (debouncedFinalPrice !== '') {
+      // TODO: Actualizar precio final en backend
+      console.log('Actualizar precio final:', debouncedFinalPrice);
+    }
+  }, [debouncedFinalPrice]);
+
+  // Handlers
+  const handleFinalPriceEdit = () => {
+    setIsEditingFinalPrice(true);
+  };
+
+  const handleFinalPriceSave = () => {
+    const numericValue = parseFloat(finalPriceInput);
+    if (!isNaN(numericValue) && numericValue > 0) {
+      const safeValue = Math.max(numericValue, totalCostsUSD);
+      setFinalPrice(safeValue);
+      setIsEditingFinalPrice(false);
+      toast.success('Precio final actualizado');
     } else {
-      setSuggestedPrices([]);
+      toast.error('Precio inválido');
+      setFinalPriceInput(finalPriceUSD.toFixed(2));
     }
-    setSelectedRoundedPrice(null);
+  };
 
-    const currentFinalPrice = currency === "USD" ? finalPrice : finalPrice * exchangeRate;
-    setFinalPriceValue(currentFinalPrice.toFixed(2));
+  const handleFinalPriceCancel = () => {
+    setFinalPriceInput(finalPriceUSD.toFixed(2));
+    setIsEditingFinalPrice(false);
+  };
 
-  }, [request?.price, request?.currency]);
-
-  useEffect(() => {
-    if (debounceFinalPrice !== '') {
-      // CALL TRPC TO UPDATE FINAL PRICE
-      console.log('CALL TRPC TO UPDATE FINAL PRICE', debounceFinalPrice);
+  const handleProfitEdit = () => {
+    // Si hay ganancia de productos, abrir desglose en lugar de editar
+    if (productsProfitUSD > 0) {
+      setShowProfitDetails(true);
+    } else {
+      setIsEditingProfit(true);
     }
-  }, [debounceFinalPrice]);
+  };
 
-  const handleSuggestionClick = (suggestionValue: number) => {
-    setSelectedRoundedPrice(prevSelected => {
-      const newSelection = prevSelected === suggestionValue ? null : suggestionValue;
-      const baseTotalForDisplay = currency === "PEN" ? pricePEN : price;
+  const handleProfitSave = () => {
+    const numericValue = parseFloat(profitInput);
+    if (!isNaN(numericValue) && numericValue >= 0) {
+      // Calcular nuevo precio final basado en la ganancia deseada
+      const newFinalPrice = totalCostsUSD + numericValue;
+      setFinalPrice(newFinalPrice);
+      setIsEditingProfit(false);
+      toast.success('Ganancia actualizada');
+    } else {
+      toast.error('Ganancia inválida');
+      setProfitInput(totalProfitUSD.toFixed(2));
+    }
+  };
 
-      if (newSelection !== null) {
-        setFinalPriceValue(newSelection.toFixed(2));
-        setFinalPrice(newSelection);
-      } else {
-        setFinalPriceValue(baseTotalForDisplay.toFixed(2));
-        setFinalPrice(baseTotalForDisplay);
+  const handleProfitCancel = () => {
+    setProfitInput(totalProfitUSD.toFixed(2));
+    setIsEditingProfit(false);
+  };
+
+  const handleAdditionalProfitEdit = () => {
+    setIsEditingAdditionalProfit(true);
+  };
+
+  const handleAdditionalProfitSave = async () => {
+    const numericValue = parseFloat(additionalProfitInput);
+    if (!isNaN(numericValue)) {
+      // Calcular nuevo precio final: costos + ganancia de productos + ajuste
+      const newFinalPrice = totalCostsUSD + productsProfitUSD + numericValue;
+      
+      // Optimistic update
+      setFinalPrice(newFinalPrice);
+      setIsEditingAdditionalProfit(false);
+      
+      // Backend update
+      try {
+        await updateRequestMutation.mutateAsync({
+          id: request?.id ?? '',
+          finalPrice: newFinalPrice,
+          profit: numericValue
+        });
+      } catch (error) {
+        toast.error('Error al actualizar la ganancia');
+        // Revertir cambios
+        setAdditionalProfitInput(additionalProfitUSD.toFixed(2));
       }
-      return newSelection;
-    });
-  };
-
-  const handleFinalPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setFinalPriceValue(value);
-    setFinalPrice(Number(value));
-    setSelectedRoundedPrice(null);
-  };
-
-  const handleExchangeRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setExchangeRateInput(value);
-  };
-
-  const handleExchangeRateBlur = () => {
-    const newRate = parseFloat(exchangeRateInput);
-    if (!isNaN(newRate) && newRate > 0) {
-      setStoreExchangeRate(newRate);
-      setIsEditingExchangeRate(false);
-      toast.success('Tipo de cambio actualizado');
     } else {
-      toast.error('Tipo de cambio inválido');
-      setExchangeRateInput(exchangeRate.toFixed(4));
+      toast.error('Valor inválido');
+      setAdditionalProfitInput(additionalProfitUSD.toFixed(2));
     }
   };
+
+  const handleAdditionalProfitCancel = () => {
+    setAdditionalProfitInput(additionalProfitUSD.toFixed(2));
+    setIsEditingAdditionalProfit(false);
+  };
+
 
   return (
-    <Card className="shadow-lg">
+    <Card>
       <CardHeader className="pb-3">
-        <div className="flex justify-between items-center">
-          <CardTitle className="text-xl font-semibold">Totals Summary</CardTitle>
-          <Drawer direction="right">
-            <DrawerTrigger asChild>
-              <Button variant="outline" size="icon">
-                <Calculator className="h-5 w-5" />
-                <span className="sr-only">Open Pricing Calculator</span>
-              </Button>
-            </DrawerTrigger>
-            <DrawerContent>
-              <DrawerHeader>
-                <DrawerTitle>Pricing Calculator</DrawerTitle>
-                <DrawerDescription>
-                  Adjust prices and review profit margins.
-                </DrawerDescription>
-              </DrawerHeader>
-              <div className="p-4">
-                <PricingCalculator
-                  disabled={true} 
-                  basePrice={subTotal}
-                  weight={weight}
-                  taxPercentage={0}
-                />
-              </div>
-              <DrawerFooter>
-                <DrawerClose asChild>
-                  <Button variant="outline">Close</Button>
-                </DrawerClose>
-              </DrawerFooter>
-            </DrawerContent>
-          </Drawer>
-        </div>
+        <CardTitle className="text-base font-semibold">Resumen</CardTitle>
       </CardHeader>
+
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="text-muted-foreground">Total Weight: {weight.toFixed(2)} kg</div>
-          <div className="text-right flex items-center justify-end gap-1">
-            <span className="text-muted-foreground">TC:</span>
-            {isEditingExchangeRate ? (
-              <input
-                type="number"
-                step="0.0001"
-                value={exchangeRateInput}
-                onChange={handleExchangeRateChange}
-                onBlur={handleExchangeRateBlur}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleExchangeRateBlur();
-                  }
-                }}
-                className="w-20 px-1 py-0.5 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-primary"
-                autoFocus
-              />
-            ) : (
-              <button
-                onClick={() => setIsEditingExchangeRate(true)}
-                className="font-semibold hover:text-primary transition-colors"
-                title="Click para editar"
-              >
-                S/. {(exchangeRate || 0).toFixed(4)}
-              </button>
-            )}
-          </div>
-        </div>
-
-        <Separator />
-
-        <div className="space-y-1">
-          <div className="flex justify-between">
-            <span className="text-sm">Subtotal:</span>
-            <span className="text-sm font-semibold">
-              ${subTotal.toFixed(2)} / S/. {subTotalPEN.toFixed(2)}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-sm">Shipping Costs:</span>
-            <span className="text-sm font-semibold">
-              ${shippingCostsUSD.toFixed(2)} / S/. {shippingCostsPEN.toFixed(2)}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-sm">Total Profit:</span>
-            <span className="text-sm font-semibold text-green-600">
-              ${actualProfitUSD.toFixed(2)} / S/. {actualProfitPEN.toFixed(2)}
-            </span>
-          </div>
-          <Separator className="my-2" />
-          <div className="flex justify-between">
-            <span className="text-base font-bold">Total:</span>
-            <span className="text-base font-bold">
-              ${price.toFixed(2)} / S/. {pricePEN.toFixed(2)} 
-            </span>
-          </div>
-        </div>
-
-        <Separator />
-
-        <div className="bg-muted/50 p-3 rounded-md">
-          <div className="flex justify-between items-center mb-2">
-            <Label htmlFor="finalPriceDisplayCurrencyToggle" className="text-sm font-medium">
-              Currency for Final Price & Suggestions:
-            </Label>
-            <ToggleGroup
-              id="finalPriceDisplayCurrencyToggle"
-              type="single"
-              variant="outline"
-              value={currency} 
-              onValueChange={(value) => {
-                if (value) {
-                  setCurrency(value as "PEN" | "USD"); 
-                  setSelectedRoundedPrice(null);
-                }
-              }}
-
-              className="h-9"
-            >
-              <ToggleGroupItem value="PEN" aria-label="PEN" size="sm">S/.</ToggleGroupItem>
-              <ToggleGroupItem value="USD" aria-label="USD" size="sm">$</ToggleGroupItem>
-            </ToggleGroup>
-          </div>
-
-          <div className="space-y-3 mt-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Label htmlFor="enableRounding" className="text-sm font-medium">
-                  Adjust Final Price
-                </Label>
-              </div>
-              {enableRounding && <Sparkles className="h-5 w-5 text-amber-500" />}
+        {/* Desglose ordenado */}
+        <div className="space-y-3">
+          {/* Subtotal */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Subtotal</span>
+            <div className="text-right">
+              <div className="font-semibold">${subTotal.toFixed(2)}</div>
+              <div className="text-xs text-muted-foreground">S/. {subTotalPEN.toFixed(2)}</div>
             </div>
+          </div>
 
-            {enableRounding && suggestedPrices.length > 0 && (
-              <div className="space-y-2 pt-2">
-                <Label className="text-xs text-muted-foreground">Select a Suggested Price:</Label>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {suggestedPrices.map((suggestion) => (
-                    <Button
-                      key={suggestion.label}
-                      variant={selectedRoundedPrice === suggestion.value ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => handleSuggestionClick(suggestion.value)}
-                      className="text-xs h-auto py-1.5 px-2 whitespace-normal text-center w-full"
-                    >
-                      {suggestion.label}
-                    </Button>
-                  ))}
-                </div>
+          {/* Envío con Dropdown */}
+          <div>
+            <button
+              onClick={() => setShowShippingDetails(!showShippingDetails)}
+              className="w-full flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Envío</span>
+                <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform duration-200 ${showShippingDetails ? 'rotate-180' : ''}`} />
               </div>
-            )}
+              <div className="text-right">
+                <div className="font-semibold">${totalShippingCost.toFixed(2)}</div>
+                <div className="text-xs text-muted-foreground">S/. {shippingCostsPEN.toFixed(2)}</div>
+              </div>
+            </button>
 
-            {enableRounding && (selectedRoundedPrice !== null || finalPrice !== price) && (
-              <div className={`grid grid-cols-2 gap-x-2 gap-y-1 p-3 rounded-md mt-2 text-sm ${calculatedAdjustmentPercentage >= 0 ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
-                <div className="font-medium">Adjusted Price:</div>
-                <div className="text-right font-bold">
-                  S/. {pricePEN.toFixed(2)} 
-                  {displayCurrencyForFinalPrice === "USD" && ` ( ${formatCurrency(pricePEN / (exchangeRate || 3.7), "USD")} )`}
+            {/* Detalles de Envío */}
+            {showShippingDetails && (
+              <div className="mt-2 ml-4 pl-3 border-l-2 border-border space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="text-xs text-muted-foreground mb-2">Peso total: {weight.toFixed(2)} kg</div>
+                
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">{weight.toFixed(2)} kg × $7</span>
+                  <div className="text-right">
+                    <div className="font-medium">${shippingByWeight.toFixed(2)}</div>
+                    <div className="text-muted-foreground">S/. {shippingByWeightPEN.toFixed(2)}</div>
+                  </div>
                 </div>
-
-                <div className="font-medium">
-                  {calculatedAdjustmentPercentage >= 0 ? "Discount Applied:" : "Price Increase Applied:"}
+                
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Tramitación</span>
+                  <div className="text-right">
+                    <div className="font-medium">${PROCESSING_FEE.toFixed(2)}</div>
+                    <div className="text-muted-foreground">S/. {processingFeePEN.toFixed(2)}</div>
+                  </div>
                 </div>
-                <div className={`text-right font-semibold ${calculatedAdjustmentPercentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {Math.abs(calculatedAdjustmentPercentage).toFixed(2)}% (S/. {Math.abs(price - finalPrice).toFixed(2)})
-                </div>
-
-                <div className="col-span-2 pt-1">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Original: S/. {pricePEN.toFixed(2)}</span> 
-                    {calculatedAdjustmentPercentage >= 0 && finalPrice < price ?
-                      <ArrowDown className="h-3 w-3 text-green-600" /> :
-                      (calculatedAdjustmentPercentage < 0 && finalPrice > price ?
-                        <ArrowUp className="h-3 w-3 text-red-600" /> : null)
-                    }
-                    <span>Adjusted: S/. {finalPricePEN.toFixed(2)}</span> 
+                
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Movilidad</span>
+                  <div className="text-right">
+                    <div className="font-medium">${HANDLING_FEE.toFixed(2)}</div>
+                    <div className="text-muted-foreground">S/. {handlingFeePEN.toFixed(2)}</div>
                   </div>
                 </div>
               </div>
             )}
           </div>
+
+          {/* Ganancia con edición y desglose */}
+          <div>
+            {isEditingProfit ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Ganancia</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={profitInput}
+                      onChange={(e) => setProfitInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleProfitSave()}
+                      className="w-full pl-7 pr-3 py-2 text-sm font-semibold text-right border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                      autoFocus
+                    />
+                  </div>
+                  <Button size="icon" className="h-9 w-9" onClick={handleProfitSave}>
+                    <Check className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-9 w-9" onClick={handleProfitCancel}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="w-full flex items-center justify-between">
+                  <button
+                    onClick={() => setShowProfitDetails(!showProfitDetails)}
+                    className="flex items-center gap-2"
+                  >
+                    <span className="text-sm text-muted-foreground">Ganancia</span>
+                    {productsProfitUSD > 0 && (
+                      <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform duration-200 ${showProfitDetails ? 'rotate-180' : ''}`} />
+                    )}
+                  </button>
+                  <button
+                    onClick={handleProfitEdit}
+                    className="group text-right px-2 py-1 rounded hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="font-semibold text-green-600 border-b border-dashed border-transparent group-hover:border-green-600/30 transition-colors">
+                      ${totalProfitUSD.toFixed(2)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">S/. {totalProfitPEN.toFixed(2)}</div>
+                  </button>
+                </div>
+
+                {/* Detalles de Ganancia */}
+                {showProfitDetails && productsProfitUSD > 0 && (
+                  <div className="mt-2 ml-4 pl-3 border-l-2 border-border space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Ganancia de productos</span>
+                      <div className="text-right">
+                        <div className="font-medium">${productsProfitUSD.toFixed(2)}</div>
+                        <div className="text-muted-foreground">S/. {productsProfitPENDisplay.toFixed(2)}</div>
+                      </div>
+                    </div>
+                    
+                    {/* Ajuste de ganancia - siempre mostrar si hay baseProfit */}
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Ajuste de ganancia</span>
+                      {isEditingAdditionalProfit ? (
+                        <div className="flex items-center gap-1">
+                          <div className="relative">
+                            <span className="absolute left-1 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={additionalProfitInput}
+                              onChange={(e) => setAdditionalProfitInput(e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && handleAdditionalProfitSave()}
+                              className="w-16 pl-4 pr-1 py-0.5 text-xs text-right border rounded"
+                              autoFocus
+                            />
+                          </div>
+                          <Button size="icon" className="h-5 w-5" onClick={handleAdditionalProfitSave}>
+                            <Check className="h-2.5 w-2.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-5 w-5" onClick={handleAdditionalProfitCancel}>
+                            <X className="h-2.5 w-2.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={handleAdditionalProfitEdit}
+                          className="text-right px-1 py-0.5 rounded hover:bg-muted/50 transition-colors"
+                        >
+                          <div className={`font-medium border-b border-dashed border-transparent hover:border-current transition-colors ${additionalProfitUSD > 0 ? 'text-green-600' : additionalProfitUSD < 0 ? 'text-red-600' : ''}`}>
+                            ${additionalProfitUSD > 0 ? '+' : ''}{additionalProfitUSD.toFixed(2)}
+                          </div>
+                          <div className="text-muted-foreground">
+                            S/. {additionalProfitUSD > 0 ? '+' : ''}{additionalProfitPEN.toFixed(2)}
+                          </div>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
         <Separator />
 
-        <div className="p-3 rounded-md">
-          <div className="flex justify-between items-center mb-2">
-            <Label htmlFor="finalPriceInput" className="text-lg font-bold">
-              FINAL PRICE ({displayCurrencyForFinalPrice === "PEN" ? "S/." : "$"}): 
-            </Label>
-          </div>
-          <input
-            id="finalPriceInput"
-            type="text"
-            value={finalPriceValue}
-            onChange={handleFinalPriceChange}
-            className="text-lg font-bold text-right w-full p-1 border rounded border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
-          {(selectedRoundedPrice !== null || finalPrice !== price) && calculatedAdjustmentPercentage !== 0 && (
-            <div className="text-xs text-muted-foreground col-span-2 text-right pt-1">
-              {`Adjustment of ${Math.abs(calculatedAdjustmentPercentage).toFixed(2)}% applied to S/. ${pricePEN.toFixed(2)}`} 
+        {/* Precio Final */}
+        <div>
+          {isEditingFinalPrice ? (
+            <div className="space-y-2">
+              <span className="text-sm font-medium">Precio Final</span>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={totalCostsUSD.toFixed(2)}
+                    value={finalPriceInput}
+                    onChange={(e) => setFinalPriceInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleFinalPriceSave()}
+                    className="w-full pl-7 pr-3 py-2 text-sm font-semibold text-right border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                    autoFocus
+                  />
+                </div>
+                <Button size="icon" className="h-9 w-9" onClick={handleFinalPriceSave}>
+                  <Check className="h-3.5 w-3.5" />
+                </Button>
+                <Button size="icon" variant="ghost" className="h-9 w-9" onClick={handleFinalPriceCancel}>
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Precio Final</span>
+              <button
+                onClick={handleFinalPriceEdit}
+                className="group text-right px-3 py-2 rounded hover:bg-muted/50 transition-colors"
+              >
+                <div className="text-2xl font-bold border-b-2 border-dashed border-transparent group-hover:border-primary/30 transition-colors inline-block">
+                  ${finalPriceUSD.toFixed(2)}
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">S/. {finalPricePEN.toFixed(2)}</div>
+              </button>
             </div>
           )}
         </div>

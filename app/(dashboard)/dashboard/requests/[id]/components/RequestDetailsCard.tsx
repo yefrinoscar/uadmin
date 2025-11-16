@@ -64,9 +64,6 @@ const StatusBadge: React.FC<{ status: PurchaseRequestStatus }> = ({ status }) =>
 export function RequestDetailsCard({ request }: RequestDetailsCardProps) {
   return (
     <Card>
-      {/* <CardHeader>
-        <CardTitle className="text-xl font-semibold">Detalle de pedido</CardTitle>
-      </CardHeader> */}
       <CardContent className="text-sm grid grid-cols-2">
         <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 col-span-1">
           <Label className="text-muted-foreground text-right">ID de pedido:</Label>

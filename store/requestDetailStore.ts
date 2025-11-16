@@ -205,14 +205,29 @@ export const useRequestDetailStore = create<RequestDetailState>((set, get) => ({
   setTotal: (total) => set({ total }),
 
   setFinalPrice: (finalPrice: number) => {
-    const currency = get().request?.currency
-    const exchangeRate = get().exchangeRate
-    set((state) => ({
+    const state = get()
+    const currency = state.request?.currency
+    const exchangeRate = state.exchangeRate
+    const subTotal = state.request?.sub_total || 0
+    const shipping = state.shipping || 0
+    
+    // Calcular ganancia de productos (en PEN, convertir a USD)
+    const productsProfitPEN = state.request?.products?.reduce((sum, p) => sum + (p.profit_amount || 0), 0) ?? 0
+    const productsProfitUSD = productsProfitPEN / exchangeRate
+    
+    // Calcular profit total y profit adicional
+    const finalPriceUSD = currency === "USD" ? finalPrice : finalPrice / exchangeRate
+    const totalProfit = finalPriceUSD - subTotal - shipping
+    const additionalProfit = totalProfit - productsProfitUSD
+    
+    set({
       request: {
         ...state.request,
-        final_price: currency === "USD" ? finalPrice : finalPrice / exchangeRate
+        final_price: finalPriceUSD,
+        profit: additionalProfit,  // Guardar solo ganancia adicional
+        price: finalPriceUSD
       } as PurchaseRequest
-    }))
+    })
   },
 
   setCurrency: (currency: "PEN" | "USD") => {

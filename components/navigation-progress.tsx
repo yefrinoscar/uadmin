@@ -24,8 +24,10 @@ export function NavigationProgress() {
   
   const startTimeRef = useRef<number>(0);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [averageLoadTime, setAverageLoadTime] = useState<number>(0);
   const loadTimesRef = useRef<number[]>([]);
+  const [showPerformance, setShowPerformance] = useState<boolean>(false);
 
   // Calculate average load time
   const updateAverageLoadTime = (newTime: number) => {
@@ -66,6 +68,19 @@ export function NavigationProgress() {
         isInitialLoad: false,
       }));
       
+      // Mostrar el performance indicator
+      setShowPerformance(true);
+      console.log('Mostrando performance indicator');
+      
+      // Ocultar después de 2 segundos
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+      }
+      hideTimeoutRef.current = setTimeout(() => {
+        console.log('Ocultando performance indicator');
+        setShowPerformance(false);
+      }, 2000);
+      
       startTimeRef.current = 0;
     }
   };
@@ -80,7 +95,7 @@ export function NavigationProgress() {
         currentPath: pathname,
       }));
     }
-  }, [pathname, navigationState.currentPath]);
+  }, [pathname]); // Removido navigationState.currentPath de las dependencias
 
   // Intercept navigation events
   useEffect(() => {
@@ -160,6 +175,9 @@ export function NavigationProgress() {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+      }
     };
   }, [router, pathname, navigationState.isInitialLoad]);
 
@@ -189,7 +207,7 @@ export function NavigationProgress() {
   };
 
   return (
-    <div className="fixed top-4 right-4 flex flex-col gap-2 z-50">
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 flex flex-col gap-2 z-50">
       {/* Loading indicator */}
       {navigationState.isNavigating && (
         <div className={cn(
@@ -215,7 +233,9 @@ export function NavigationProgress() {
         <div className={cn(
           "flex items-center gap-3 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm",
           "border border-gray-200/50 dark:border-gray-700/50",
-          "px-3 py-2 rounded-lg shadow-md"
+          "px-3 py-2 rounded-lg shadow-md",
+          "transition-all duration-300",
+          showPerformance ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-5 pointer-events-none"
         )}>
           <div className="flex items-center gap-2">
             {navigationState.loadTime < 300 ? (

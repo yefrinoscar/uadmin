@@ -2,18 +2,17 @@
 
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
-import { Save, Loader2 } from "lucide-react"
+import { Save, Loader2, XCircle } from "lucide-react"
 import { RequestDetailsCard } from "./RequestDetailsCard"
 import { TotalSummaryCard } from "./TotalSummaryCard"
 import ProductList from "./ProductList"
 import { useTRPC } from '@/trpc/client';
 import { useMutation, useSuspenseQuery, useQueryClient, QueryKey } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
-import "./status-workflow.css"
 import { useRequestDetailStore } from "@/store/requestDetailStore"
 import { BackButton } from "@/components/back"
 import { PurchaseRequestStatus } from "../../types"
-import { StatusWorkflow } from "./StatusWorkflow";
+import { StatusWorkflow, getAvailableStatusTransitions } from "./StatusWorkflow";
 import { RequestPreviewDrawer } from "./RequestPreviewDrawer";
 import { PurchaseRequest } from "@/trpc/api/routers/requests"
 
@@ -111,21 +110,6 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
     },
   }));
 
-  // const sendEmailMutation = useMutation(
-  //   trpc.requests.sendEmail.mutationOptions({
-  //     onSuccess: () => {
-  //       toast.success("Email enviado correctamente");
-  //       refetch(); // Refetch data to update request.email_sent status
-  //       setIsSendingEmail(false);
-  //     },
-  //     onError: (error) => {
-  //       toast.error("Error al enviar el email");
-  //       console.error("Error sending email:", error);
-  //       setIsSendingEmail(false);
-  //     }
-  //   })
-  // );
-
   useEffect(() => {
     if (requestData) {
       setRequest(requestData);
@@ -177,32 +161,6 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
 
   }, [request, requestData]);
 
-  // const handleSendEmail = async () => {
-  //   if (!request?.client?.email || !responseText.trim()) {
-  //     toast.warning("No hay respuesta para enviar");
-  //     return;
-  //   }
-  //   setIsSendingEmail(true);
-
-  //   try {
-  //     await updateRequestMutation.mutateAsync({
-  //       id,
-  //       response: responseText,
-  //       price: request?.price ?? 0, 
-  //       finalPrice: request?.final_price ?? 0
-  //     });
-
-  //     await sendEmailMutation.mutateAsync({
-  //       id,
-  //       email: request.client.email,
-  //       subject: 'Respuesta a tu solicitud de cotización',
-  //       content: responseText
-  //     });
-  //   } catch {
-  //     setIsSendingEmail(false);
-  //   }
-  // };
-
   const handleSaveChanges = async () => {
     if (!request?.id) {
       toast.error("Error", { description: "ID de solicitud no encontrado." });
@@ -246,7 +204,7 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
 
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
 
       <div className="flex justify-between items-start">
         <div className="flex space-x-2 items-center"> 
@@ -255,6 +213,26 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
         </div>
 
         <div className="flex space-x-3 items-center">
+          {/* Cancel Order Button */}
+          {requestData?.status && 
+           getAvailableStatusTransitions(requestData.status as PurchaseRequestStatus).includes('cancelled') && 
+           requestData.status !== 'cancelled' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => !isUpdatingStatus && handleStatusChange('cancelled')}
+              disabled={isUpdatingStatus}
+              className="border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/20"
+            >
+              {isUpdatingStatus ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <XCircle className="mr-2 h-4 w-4" />
+              )}
+              Cancelar pedido
+            </Button>
+          )}
+
           {/* Save Changes Button */}
           {hasUnsavedChanges && (
             <Button
@@ -272,66 +250,24 @@ export function RequestDetail({ id }: RequestDetailClientPageProps) {
             </Button>
           )}
           
-          {/* Email Button */}
-          <div className="flex space-x-2">
-            {/* Email Dropdown */}
-            {/* <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  disabled={!responseText.trim() || isSendingEmail}
-                  className={`transition-all ${!responseText.trim() ? "opacity-50 cursor-not-allowed" : "hover:bg-primary hover:text-primary-foreground"}`}
-                >
-                  <Send className="h-4 w-4 mr-2" />
-                  Enviar
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 p-1">
-                {requestData?.client && requestData.client.email && (
-                  <DropdownMenuItem
-                    onClick={handleSendEmail}
-                    disabled={isSendingEmail}
-                    className="flex items-center cursor-pointer py-2 px-3 rounded-md hover:bg-secondary transition-colors"
-                  >
-                    {isSendingEmail ? (
-                      <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-                    ) : (
-                      <Mail className={`w-4 h-4 mr-2 ${emailSent ? "text-green-500" : ""}`} />
-                    )}
-                    {emailSent ? "Email enviado anteriormente" : "Enviar por Email"}
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem
-                  disabled={true}
-                  className="flex items-center cursor-not-allowed py-2 px-3 rounded-md opacity-50"
-                >
-                  <MessageCircle className="w-4 h-4 mr-2" />
-                  WhatsApp deshabilitado
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu> */}
-            
-            {/* Preview Drawer Component */}
-            <RequestPreviewDrawer />
-            
-          </div>
+          {/* Preview Drawer Component */}
+          <RequestPreviewDrawer />
         </div>
       </div>
 
-      {requestData && requestData.status && (
-        <StatusWorkflow 
-          currentActualStatus={requestData.status} 
-          isUpdatingStatus={isUpdatingStatus} 
-          onStatusChange={handleStatusChange} 
-        />
-      )}
-      
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 space-y-4">
+          {requestData && requestData.status && (
+            <StatusWorkflow 
+              currentActualStatus={requestData.status} 
+              isUpdatingStatus={isUpdatingStatus} 
+              onStatusChange={handleStatusChange} 
+            />
+          )}
           {requestData && <RequestDetailsCard request={requestData} />}
           {requestData && <ProductList requestId={id} products={requestData.products} />}
         </div>
-        <div className="lg:col-span-1 space-y-6">
+        <div className="lg:col-span-1 space-y-4">
           <TotalSummaryCard />
         </div>
       </div>

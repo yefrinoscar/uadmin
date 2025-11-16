@@ -4,14 +4,8 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import { toast } from "sonner"
-import { PlusCircle, Trash2 } from "lucide-react"
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { PlusCircle, Trash2, Package, Loader2 } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
@@ -27,7 +21,6 @@ import { AddProductDialog } from "./AddProductDialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { v4 as uuidv4 } from "uuid"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Loader2 } from "lucide-react"
 import { useTRPC } from "@/trpc/client"
 import { Product } from "@/trpc/api/routers/requests"
 import { useRequestDetailStore } from "@/store/requestDetailStore"
@@ -37,7 +30,7 @@ import {
   flexRender,
   createColumnHelper,
   ColumnDef,
-  Column, // Added Column here
+  Column, 
   getFilteredRowModel,
   getPaginationRowModel
 } from '@tanstack/react-table'
@@ -52,8 +45,8 @@ interface ProductListProps {
 interface EditableCellProps<TData> {
   getValue: () => any;
   row: { original: TData; index: number };
-  column: Column<TData, unknown>; // Changed type here
-  table: any; // Consider typing table more strictly as Table<TData> if needed later
+  column: Column<TData, unknown>; 
+  table: any; 
 }
 
 // Memoized EditableCell component to prevent unnecessary re-renders
@@ -197,9 +190,6 @@ export default function ProductList({ requestId, products: initialProducts }: Pr
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
-  // Calculate totals
-  const totalProducts = products.length;
-
   // Update product mutation
   const updateProductMutation = useMutation(
     trpc.requests.updateProduct.mutationOptions({
@@ -209,8 +199,6 @@ export default function ProductList({ requestId, products: initialProducts }: Pr
         
         // Snapshot the previous value
         const previousQueryData = queryClient.getQueryData(trpc.requests.getById.queryKey({ id: requestId })) as PurchaseRequest;
-        console.log(previousQueryData);
-        
         
         // Separate potentially extraneous properties like imageData
         const { imageData, ...productDataForState } = productInput;
@@ -390,16 +378,6 @@ export default function ProductList({ requestId, products: initialProducts }: Pr
     });
   };
 
-  // Get initials for avatar
-  const getInitials = (title: string) => {
-    return title
-      .split(' ')
-      .map(word => word[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 2);
-  };
-
   // Define default column for all cells
   const defaultColumn: Partial<ColumnDef<Product>> = useMemo(
     () => ({
@@ -413,12 +391,27 @@ export default function ProductList({ requestId, products: initialProducts }: Pr
   const columns = useMemo<ColumnDef<Product, any>[]>(() => [
     columnHelper.display({
       id: 'image',
-      header: '',
+      header: () => (
+        <div className="flex justify-center">
+          <AddProductDialog
+            onAddProduct={(product) => {
+              handleUpdateProduct(product)
+            }}
+          >
+            <Button
+              size="icon"
+              className="h-8 w-8 rounded-md bg-foreground text-background hover:bg-foreground/90 transition-colors"
+            >
+              <PlusCircle className="h-4 w-4" />
+            </Button>
+          </AddProductDialog>
+        </div>
+      ),
       cell: ({ row }) => {
         const product = row.original;
         return (
           <div className="flex justify-center">
-            <Avatar className="h-8 w-8 rounded-md border border-border">
+            <Avatar className="h-8 w-8 rounded-md">
               {product.image_url ? (
                 <AvatarImage 
                   src={product.image_url} 
@@ -426,8 +419,8 @@ export default function ProductList({ requestId, products: initialProducts }: Pr
                   className="object-cover"
                 />
               ) : (
-                <AvatarFallback className="bg-primary/10 text-primary font-medium text-xs">
-                  {getInitials(product.title)}
+                <AvatarFallback className="bg-muted text-muted-foreground rounded-md">
+                  <Package className="h-4 w-4" />
                 </AvatarFallback>
               )}
             </Avatar>
@@ -646,10 +639,7 @@ export default function ProductList({ requestId, products: initialProducts }: Pr
   });
 
   return (
-    <Card className="border shadow-md py-0">
-      <CardHeader className="px-6 py-4 border-b">
-        <CardTitle className="text-lg font-semibold">Productos</CardTitle>
-      </CardHeader>
+    <Card className="py-0">
       <CardContent className="p-0">
         {products.length === 0 ? (
           <div className="flex min-h-[250px] flex-col items-center justify-center p-6 text-center text-muted-foreground">
@@ -705,23 +695,6 @@ export default function ProductList({ requestId, products: initialProducts }: Pr
           </ScrollArea>
         )}
       </CardContent>
-      <CardFooter className="px-6 py-4 border-t flex justify-between items-center">
-        <div className="text-sm">
-          <div className="font-medium">{totalProducts} productos</div>
-        </div>
-        <div className="flex gap-2">
-          <AddProductDialog
-            onAddProduct={(product) => {
-              handleUpdateProduct(product)
-            }}
-          >
-            <Button className="bg-primary hover:bg-primary/90">
-              <PlusCircle className="h-4 w-4 mr-1" />
-              Agregar
-            </Button>
-          </AddProductDialog>
-        </div>
-      </CardFooter>
     </Card>
   )
 }

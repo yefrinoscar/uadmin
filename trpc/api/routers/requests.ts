@@ -506,13 +506,14 @@ export const requestsRouter = router({
       id: z.string(),
       price: z.number().optional(),
       finalPrice: z.number().optional(),
+      profit: z.number().optional(),
       response: z.string().optional(),
       currency: z.string().optional(),
       exchangeRate: z.number().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       try {
-        const { id, price, finalPrice, response, currency, exchangeRate } = input;
+        const { id, price, finalPrice, profit, response, currency, exchangeRate } = input;
 
         // First, let's check if the request exists
         const { data: existingRequest, error: findError } = await ctx.supabase
@@ -549,6 +550,10 @@ export const requestsRouter = router({
 
         if (exchangeRate !== undefined) {
           updateData.exchange_rate = exchangeRate;
+        }
+
+        if (profit !== undefined) {
+          updateData.profit = profit;
         }
 
         const { error: updateError } = await ctx.supabase

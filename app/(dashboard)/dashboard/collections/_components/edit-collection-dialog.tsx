@@ -43,6 +43,20 @@ export function EditCollectionDialog({
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
+  const openBannerPicker = () => {
+    if (bannerInputRef.current) {
+      bannerInputRef.current.value = "";
+      bannerInputRef.current.click();
+    }
+  };
+
+  const openVideoPicker = () => {
+    if (videoInputRef.current) {
+      videoInputRef.current.value = "";
+      videoInputRef.current.click();
+    }
+  };
+
   // Sync state when collection changes or dialog opens
   useEffect(() => {
     setBannerUrl(collection.banner_url || "");
@@ -58,6 +72,9 @@ export function EditCollectionDialog({
   const updateMutation = useMutation(
     trpc.collections.update.mutationOptions({
       onMutate: async (variables) => {
+        const bannerProvided = Object.prototype.hasOwnProperty.call(variables, "banner_url");
+        const videoProvided = Object.prototype.hasOwnProperty.call(variables, "video_url");
+
         // Cancel any outgoing refetches
         await queryClient.cancelQueries({ queryKey: [['collections', 'getAll']] });
 
@@ -71,8 +88,8 @@ export function EditCollectionDialog({
             if (collection.id === variables.id) {
               return {
                 ...collection,
-                banner_url: variables.banner_url,
-                video_url: variables.video_url,
+                ...(bannerProvided ? { banner_url: variables.banner_url ?? null } : {}),
+                ...(videoProvided ? { video_url: variables.video_url ?? null } : {}),
               };
             }
             return collection;
@@ -80,26 +97,29 @@ export function EditCollectionDialog({
         });
 
         // Set loading states
-        if (variables.banner_url !== null && variables.banner_url !== undefined) {
+        if (bannerProvided && variables.banner_url !== null) {
           setBannerLoading(true);
         }
-        if (variables.video_url !== null && variables.video_url !== undefined) {
+        if (videoProvided && variables.video_url !== null) {
           setVideoLoading(true);
         }
 
         return { previousCollections };
       },
       onSuccess: (data, variables) => {
+        const bannerProvided = Object.prototype.hasOwnProperty.call(variables, "banner_url");
+        const videoProvided = Object.prototype.hasOwnProperty.call(variables, "video_url");
+
         toast.success("Colección actualizada");
 
         // Update local state with server data
-        if (variables.banner_url !== null && variables.banner_url !== undefined) {
+        if (bannerProvided) {
           setBannerUrl(data.banner_url || "");
           setBannerPreview(data.banner_url || "");
           setBannerLoading(false);
           setOptimisticBanner(null);
         }
-        if (variables.video_url !== null && variables.video_url !== undefined) {
+        if (videoProvided) {
           setVideoUrl(data.video_url || "");
           setVideoPreview(data.video_url || "");
           setVideoLoading(false);
@@ -109,6 +129,9 @@ export function EditCollectionDialog({
         queryClient.invalidateQueries({ queryKey: [['collections', 'getAll']] });
       },
       onError: (error: any, variables, context) => {
+        const bannerProvided = Object.prototype.hasOwnProperty.call(variables, "banner_url");
+        const videoProvided = Object.prototype.hasOwnProperty.call(variables, "video_url");
+
         // Revert optimistic update
         if (context?.previousCollections) {
           queryClient.setQueryData([['collections', 'getAll']], context.previousCollections);
@@ -119,12 +142,12 @@ export function EditCollectionDialog({
         setVideoLoading(false);
 
         // Revert local state if it was an optimistic update
-        if (optimisticBanner) {
+        if (bannerProvided && optimisticBanner) {
           setBannerUrl(collection.banner_url || "");
           setBannerPreview(collection.banner_url || "");
           setOptimisticBanner(null);
         }
-        if (optimisticVideo) {
+        if (videoProvided && optimisticVideo) {
           setVideoUrl(collection.video_url || "");
           setVideoPreview(collection.video_url || "");
           setOptimisticVideo(null);
@@ -160,7 +183,6 @@ export function EditCollectionDialog({
         updateMutation.mutate({
           id: collection.id!,
           banner_url: result,
-          video_url: videoUrl || null,
         });
 
         // Clean up object URL after a short delay to ensure image is loaded
@@ -169,14 +191,20 @@ export function EditCollectionDialog({
         }, 1000);
       };
       reader.readAsDataURL(file);
+
+      // Reset input so the same file can be re-selected later
+      if (bannerInputRef.current) {
+        bannerInputRef.current.value = "";
+      }
+      e.target.value = "";
     }
   };
 
   const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 50 * 1024 * 1024) {
-        toast.error("El video no debe superar los 50MB");
+      if (file.size > 8 * 1024 * 1024) {
+        toast.error("El video no debe superar los 8MB");
         return;
       }
 
@@ -194,7 +222,6 @@ export function EditCollectionDialog({
         // Call mutation with data URL (optimistic update will happen in onMutate)
         updateMutation.mutate({
           id: collection.id!,
-          banner_url: bannerUrl || null,
           video_url: result,
         });
 
@@ -204,6 +231,12 @@ export function EditCollectionDialog({
         }, 1000);
       };
       reader.readAsDataURL(file);
+
+      // Reset input so the same file can be re-selected later
+      if (videoInputRef.current) {
+        videoInputRef.current.value = "";
+      }
+      e.target.value = "";
     }
   };
 
@@ -217,7 +250,6 @@ export function EditCollectionDialog({
     updateMutation.mutate({
       id: collection.id!,
       banner_url: null,
-      video_url: videoUrl || null,
     });
   };
 
@@ -230,7 +262,6 @@ export function EditCollectionDialog({
     // Auto-save removal
     updateMutation.mutate({
       id: collection.id!,
-      banner_url: bannerUrl || null,
       video_url: null,
     });
   };
@@ -296,7 +327,7 @@ export function EditCollectionDialog({
             ) : (
               <div
                 className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:bg-muted/50 transition-colors"
-                onClick={() => bannerInputRef.current?.click()}
+                onClick={openBannerPicker}
               >
                 <ImageIcon className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
                 <p className="text-sm text-muted-foreground">
@@ -347,11 +378,11 @@ export function EditCollectionDialog({
             ) : (
               <div
                 className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:bg-muted/50 transition-colors"
-                onClick={() => videoInputRef.current?.click()}
+                onClick={openVideoPicker}
               >
                 <VideoIcon className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
                 <p className="text-sm text-muted-foreground">
-                  Click para subir un video (máx. 50MB)
+                  Click para subir un video (máx. 8MB)
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Formatos: MP4, WebM
