@@ -109,6 +109,7 @@ export function EditCollectionDialog({
       onSuccess: (data, variables) => {
         const bannerProvided = Object.prototype.hasOwnProperty.call(variables, "banner_url");
         const videoProvided = Object.prototype.hasOwnProperty.call(variables, "video_url");
+        const updatedFields: string[] = [];
 
         toast.success("Colección actualizada");
 
@@ -148,10 +149,10 @@ export function EditCollectionDialog({
         }
 
         // Reset loading states
-        if (hasBannerUpdate) {
+        if (bannerProvided) {
           setBannerLoading(false);
         }
-        if (hasVideoUpdate) {
+        if (videoProvided) {
           setVideoLoading(false);
         }
 
