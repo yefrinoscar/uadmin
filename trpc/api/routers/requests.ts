@@ -67,6 +67,8 @@ const PurchaseRequestSchema = z.object({
   sub_total: z.number().optional().nullable().default(0),
   weight: z.number().optional().nullable().default(0),
   profit: z.number().optional().nullable().default(0),
+  productsProfit: z.number().optional().nullable().default(0),
+  totalProfit: z.number().optional().nullable().default(0),
   shipping_cost: z.number().optional().nullable(),
   price: z.number().optional().nullable(),
   final_price: z.number().optional().nullable(),

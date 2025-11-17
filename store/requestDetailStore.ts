@@ -41,6 +41,7 @@ interface RequestDetailState {
   setExchangeRate: (rate: number) => void
   setProfit: (profit: number) => void
   setFinalPrice: (finalPrice: number) => void
+  setFinalPriceValue: (finalPriceUSD: number) => void
   
   // Computed actions
   recalculateShipping: () => void
@@ -53,16 +54,18 @@ interface RequestDetailState {
 function recalculateRequestTotals(
   products: Product[], 
   shipping: number, 
-  exchangeRate: number
+  exchangeRate: number,
+  profit: number
 ) {
   const subTotal = products.reduce((sum: number, product: Product) => sum + (product.price || 0), 0)
   const weight = products.reduce((sum: number, product: Product) => sum + (product.weight || 0), 0)
-  const profit = products.reduce((sum: number, product: Product) => sum + (product.profit_amount || 0), 0)
+  const productsProfit = products.reduce((sum: number, product: Product) => sum + (product.profit_amount || 0), 0)
   
   return {
     subTotal,
     weight,
-    profit: profit / exchangeRate,
+    productsProfit: productsProfit / exchangeRate,
+    totalProfit: productsProfit / exchangeRate + profit,
     price: subTotal + shipping + (profit / exchangeRate),
     final_price: subTotal + shipping + (profit / exchangeRate)
   }
@@ -104,16 +107,15 @@ export const useRequestDetailStore = create<RequestDetailState>((set, get) => ({
     })
 
     // Recalculate totals
-    const totals = recalculateRequestTotals(products, totalCosts, exchangeRate)
-
-
+    const totals = recalculateRequestTotals(products, totalCosts, exchangeRate, request.profit)
 
     set((state) => ({
       request: {
         ...request,
         weight: totals.weight,
         sub_total: totals.subTotal,
-        profit: totals.profit,
+        productsProfit: totals.productsProfit,
+        totalProfit: totals.totalProfit,
         price: totals.price,
         final_price: finalPrice,
         exchange_rate: exchangeRate
@@ -130,7 +132,7 @@ export const useRequestDetailStore = create<RequestDetailState>((set, get) => ({
     const automaticShipping = calculateTotalShippingCost(products)
     
     // Recalculate totals
-    const totals = recalculateRequestTotals(products, automaticShipping, exchangeRate)
+    const totals = recalculateRequestTotals(products, automaticShipping, exchangeRate, state.request?.profit ?? 0)
     
     // Calculate comprehensive pricing details
     const pricingCalculations = calculatePricingDetails({
@@ -146,7 +148,8 @@ export const useRequestDetailStore = create<RequestDetailState>((set, get) => ({
         ...state.request,
         weight: totals.weight,
         sub_total: totals.subTotal,
-        profit: totals.profit,
+        productsProfit: totals.productsProfit,
+        totalProfit: totals.totalProfit,
         price: totals.price,
         final_price: totals.final_price,
         exchange_rate: exchangeRate,
@@ -166,7 +169,7 @@ export const useRequestDetailStore = create<RequestDetailState>((set, get) => ({
       const automaticShipping = calculateTotalShippingCost(products)
       
       // Recalculate totals
-      const totals = recalculateRequestTotals(products, automaticShipping, exchangeRate)
+      const totals = recalculateRequestTotals(products, automaticShipping, exchangeRate, state.request?.profit ?? 0)
       
       // Calculate comprehensive pricing details
       const pricingCalculations = calculatePricingDetails({
@@ -182,7 +185,8 @@ export const useRequestDetailStore = create<RequestDetailState>((set, get) => ({
           ...state.request,
           weight: totals.weight,
           sub_total: totals.subTotal,
-          profit: totals.profit,
+          productsProfit: totals.productsProfit,
+          totalProfit: totals.totalProfit,
           price: totals.price,
           final_price: totals.final_price,
           exchange_rate: exchangeRate,
@@ -250,6 +254,12 @@ export const useRequestDetailStore = create<RequestDetailState>((set, get) => ({
     } as PurchaseRequest
   })),
   setProfit: (profit) => set({ profit }),
+  setFinalPriceValue: (finalPriceUSD) => set((state) => ({
+    request: state.request ? {
+      ...state.request,
+      final_price: finalPriceUSD
+    } : state.request
+  })),
   
   // Computed actions
   recalculateShipping: () => {
