@@ -117,7 +117,7 @@ function formatEmailContent(content: string): string {
     .replace(/ {2,}/g, match => '&nbsp;'.repeat(match.length));
 }
 export type PurchaseRequest = z.infer<typeof PurchaseRequestSchema>
-export type PurchaseRequestList = Omit<PurchaseRequest, 'products' | 'sub_total' | 'weight' | 'profit'>
+export type PurchaseRequestList = Omit<PurchaseRequest, 'products' | 'sub_total' | 'weight' | 'profit' | 'productsProfit' | 'totalProfit' | 'shipping_cost' | 'final_price' | 'exchange_rate' | 'currency'>
 
 export type RequestFilter = z.infer<typeof FiltersSchema>
 

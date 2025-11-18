@@ -164,6 +164,10 @@ export const RequestsTable = () => {
   const totalCount = requestsPaginatedData?.totalCount ?? 0;
   const pageCount = Math.ceil(totalCount / pagination.pageSize);
 
+  const handleViewDetails = React.useCallback((id: string) => {
+    router.push(`/dashboard/requests/${id}`);
+  }, [router]);
+
   const columns = useMemo<ColumnDef<PurchaseRequestList>[]>(() => [
     {
       accessorKey: "id",
@@ -289,10 +293,6 @@ export const RequestsTable = () => {
     // Update ref to current filters for next comparison
     prevFiltersRef.current = filters;
   }, [filters]); 
-
-  function handleViewDetails(id: string) {
-    router.push(`/dashboard/requests/${id}`);
-  }
 
   return (
     <div className="space-y-4 w-full">
