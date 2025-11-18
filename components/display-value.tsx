@@ -2,12 +2,6 @@
 
 import React from "react";
 import { cn } from "@/lib/utils";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 interface DisplayValueProps {
   label: string;
@@ -34,38 +28,8 @@ export const DisplayValue: React.FC<DisplayValueProps> = ({
 }) => {
   return (
     <div className={cn("flex items-center justify-between", className)}>
-      <span className="text-sm text-muted-foreground">{label}</span>
-      {tooltip ? (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div
-                className={cn(
-                  "text-right px-2 py-1 rounded transition-colors cursor-help",
-                  showHover && "hover:bg-muted/50"
-                )}
-              >
-                <div
-                  className={cn(
-                    "font-semibold transition-colors",
-                    valueClassName
-                  )}
-                >
-                  {displayValue}
-                </div>
-                {subtitle && (
-                  <div className={cn("text-xs text-muted-foreground", subtitleClassName)}>
-                    {subtitle}
-                  </div>
-                )}
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{tooltip}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      ) : (
+      <span className="text-sm text-muted-foreground font-semibold">{label}</span>
+      {(
         <div
           className={cn(
             "text-right px-2 py-1 rounded transition-colors",

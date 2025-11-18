@@ -16,6 +16,7 @@ import { useTRPC } from "@/trpc/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { X, Image as ImageIcon, Video as VideoIcon, Loader2 } from "lucide-react";
+import { useFileStorage } from "@/lib/storage";
 
 interface EditCollectionDialogProps {
   collection: Collection;
@@ -42,6 +43,7 @@ export function EditCollectionDialog({
   
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const { uploadFile, deleteFile } = useFileStorage();
 
   const openBannerPicker = () => {
     if (bannerInputRef.current) {
@@ -175,7 +177,7 @@ export function EditCollectionDialog({
     })
   );
 
-  const handleBannerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBannerChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 10 * 1024 * 1024) {
@@ -189,23 +191,43 @@ export function EditCollectionDialog({
       setBannerPreview(objectUrl);
       setBannerLoading(true);
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        setBannerUrl(result);
+      try {
+        // Upload file to storage
+        const publicUrl = await uploadFile(file, 'images', 'collections');
 
-        // Call mutation with data URL (optimistic update will happen in onMutate)
+        // Store old banner URL for deletion after successful update
+        const oldBannerUrl = collection.banner_url;
+
+        // Update database with new URL
         updateMutation.mutate({
           id: collection.id!,
-          banner_url: result,
+          banner_url: publicUrl,
+        }, {
+          onSuccess: async () => {
+            // Delete old banner after successful database update
+            if (oldBannerUrl) {
+              try {
+                await deleteFile(oldBannerUrl, 'images');
+              } catch (error) {
+                console.error('Error deleting old banner:', error);
+                // Don't show error to user - file is already replaced
+              }
+            }
+          }
         });
 
         // Clean up object URL after a short delay to ensure image is loaded
         setTimeout(() => {
           URL.revokeObjectURL(objectUrl);
         }, 1000);
-      };
-      reader.readAsDataURL(file);
+      } catch (error) {
+        console.error('Error uploading banner:', error);
+        toast.error("Error al subir el banner");
+        setBannerLoading(false);
+        setOptimisticBanner(null);
+        setBannerPreview(collection.banner_url || "");
+        URL.revokeObjectURL(objectUrl);
+      }
 
       // Reset input so the same file can be re-selected later
       if (bannerInputRef.current) {
@@ -215,7 +237,7 @@ export function EditCollectionDialog({
     }
   };
 
-  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVideoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 8 * 1024 * 1024) {
@@ -229,23 +251,43 @@ export function EditCollectionDialog({
       setVideoPreview(objectUrl);
       setVideoLoading(true);
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        setVideoUrl(result);
+      try {
+        // Upload file to storage
+        const publicUrl = await uploadFile(file, 'images', 'collections');
 
-        // Call mutation with data URL (optimistic update will happen in onMutate)
+        // Store old video URL for deletion after successful update
+        const oldVideoUrl = collection.video_url;
+
+        // Update database with new URL
         updateMutation.mutate({
           id: collection.id!,
-          video_url: result,
+          video_url: publicUrl,
+        }, {
+          onSuccess: async () => {
+            // Delete old video after successful database update
+            if (oldVideoUrl) {
+              try {
+                await deleteFile(oldVideoUrl, 'images');
+              } catch (error) {
+                console.error('Error deleting old video:', error);
+                // Don't show error to user - file is already replaced
+              }
+            }
+          }
         });
 
         // Clean up object URL after a short delay to ensure video is loaded
         setTimeout(() => {
           URL.revokeObjectURL(objectUrl);
         }, 1000);
-      };
-      reader.readAsDataURL(file);
+      } catch (error) {
+        console.error('Error uploading video:', error);
+        toast.error("Error al subir el video");
+        setVideoLoading(false);
+        setOptimisticVideo(null);
+        setVideoPreview(collection.video_url || "");
+        URL.revokeObjectURL(objectUrl);
+      }
 
       // Reset input so the same file can be re-selected later
       if (videoInputRef.current) {
@@ -255,12 +297,22 @@ export function EditCollectionDialog({
     }
   };
 
-  const removeBanner = () => {
+  const removeBanner = async () => {
     setBannerUrl("");
     setBannerPreview("");
     if (bannerInputRef.current) {
       bannerInputRef.current.value = "";
     }
+
+    // Delete file from storage if it exists
+    if (collection.banner_url) {
+      try {
+        await deleteFile(collection.banner_url, 'images');
+      } catch (error) {
+        console.error('Error deleting banner from storage:', error);
+      }
+    }
+
     // Auto-save removal
     updateMutation.mutate({
       id: collection.id!,
@@ -268,12 +320,22 @@ export function EditCollectionDialog({
     });
   };
 
-  const removeVideo = () => {
+  const removeVideo = async () => {
     setVideoUrl("");
     setVideoPreview("");
     if (videoInputRef.current) {
       videoInputRef.current.value = "";
     }
+
+    // Delete file from storage if it exists
+    if (collection.video_url) {
+      try {
+        await deleteFile(collection.video_url, 'images');
+      } catch (error) {
+        console.error('Error deleting video from storage:', error);
+      }
+    }
+
     // Auto-save removal
     updateMutation.mutate({
       id: collection.id!,

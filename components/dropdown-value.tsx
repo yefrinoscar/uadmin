@@ -3,12 +3,6 @@
 import React, { useState, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronDown } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { InlineEditableValue } from "./inline-editable-value";
 
 interface DropdownValueProps {
@@ -55,7 +49,7 @@ export const DropdownValue: React.FC<DropdownValueProps> = ({
             onClick={() => setIsExpanded(!isExpanded)}
             className="flex items-center gap-2"
           >
-            <span className="text-sm text-muted-foreground">{label}</span>
+            <span className="text-sm text-muted-foreground font-semibold">{label}</span>
             <ChevronDown
               className={cn(
                 "h-3 w-3 text-muted-foreground transition-transform duration-200",
@@ -64,7 +58,7 @@ export const DropdownValue: React.FC<DropdownValueProps> = ({
             />
           </button>
         ) : (
-          <span className="text-sm text-muted-foreground">{label}</span>
+          <span className="text-sm text-muted-foreground font-semibold">{label}</span>
         )}
 
         {/* Valor - editable o no editable */}
@@ -83,24 +77,6 @@ export const DropdownValue: React.FC<DropdownValueProps> = ({
               valueClassName={valueClassName}
             />
           </div>
-        ) : tooltip ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="text-right px-2 py-1 rounded hover:bg-muted/50 transition-colors cursor-help">
-                  <div className={cn("font-semibold", valueClassName)}>
-                    {displayValue}
-                  </div>
-                  {subtitle && (
-                    <div className="text-xs text-muted-foreground">{subtitle}</div>
-                  )}
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{tooltip}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
         ) : (
           <div className="text-right px-2 py-1 rounded hover:bg-muted/50 transition-colors">
             <div className={cn("font-semibold", valueClassName)}>

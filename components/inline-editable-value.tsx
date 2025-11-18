@@ -2,12 +2,6 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 interface InlineEditableValueProps {
   label: string;
@@ -111,7 +105,7 @@ export const InlineEditableValue: React.FC<InlineEditableValueProps> = ({
       )}
       ref={containerRef}
     >
-      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-sm text-muted-foreground font-semibold">{label}</span>
       <div className="flex items-center gap-2">
         <div className="relative">
           {inputPrefix && (
@@ -148,38 +142,8 @@ export const InlineEditableValue: React.FC<InlineEditableValueProps> = ({
     </div>
   ) : (
     <div className={cn("flex items-center justify-between", className)}>
-      <span className="text-sm text-muted-foreground">{label}</span>
-      {tooltip ? (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={handleStartEditing}
-                className={cn(
-                  "group text-right px-2 py-1 rounded hover:bg-muted/50 transition-colors cursor-help",
-                  "disabled:opacity-50 disabled:pointer-events-none"
-                )}
-                disabled={disabled}
-              >
-                <div
-                  className={cn(
-                    "font-semibold border-b border-dashed border-transparent group-hover:border-primary/30 transition-colors",
-                    valueClassName
-                  )}
-                >
-                  {displayValue}
-                </div>
-                {subtitle && (
-                  <div className="text-xs text-muted-foreground">{subtitle}</div>
-                )}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{tooltip}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      ) : (
+      <span className="text-sm text-muted-foreground font-semibold">{label}</span>
+      {(
         <button
           onClick={handleStartEditing}
           className={cn(

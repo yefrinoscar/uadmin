@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { Edit, Trash2, Copy, Clock, XCircle, MoreVertical, Power, PowerOff } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
@@ -106,28 +105,19 @@ export function PromotionCard({
 
             {/* Enable/Disable Toggle Switch - Show for all promotions when not public */}
             {onToggleActive && !isPublic && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div onClick={(e) => e.stopPropagation()}>
-                      <Switch
-                        checked={promotion.enabled}
-                        onCheckedChange={() => {
-                          onToggleActive(promotion);
-                        }}
-                        disabled={isPending}
-                        className={cn(
-                          "data-[state=checked]:bg-green-500",
-                          !promotion.enabled && "data-[state=unchecked]:bg-gray-300"
-                        )}
-                      />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{promotion.enabled ? "Deshabilitar promoción" : "Habilitar promoción"}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <div onClick={(e) => e.stopPropagation()}>
+                <Switch
+                  checked={promotion.enabled}
+                  onCheckedChange={() => {
+                    onToggleActive(promotion);
+                  }}
+                  disabled={isPending}
+                  className={cn(
+                    "data-[state=checked]:bg-green-500",
+                    !promotion.enabled && "data-[state=unchecked]:bg-gray-300"
+                  )}
+                />
+              </div>
             )}
           </div>
 

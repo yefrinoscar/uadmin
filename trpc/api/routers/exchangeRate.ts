@@ -2,8 +2,6 @@ import { z } from 'zod';
 import { protectedProcedure, router } from '../../init';
 import { TRPCError } from '@trpc/server';
 
-const EXCHANGE_RATE_ADJUSTMENT = 0.02;
-
 const ExchangeRateSchema = z.object({
   id: z.string(),
   buy_price: z.number(),
@@ -48,14 +46,9 @@ export const exchangeRateRouter = router({
         return null;
       }
 
-      const adjustedData = {
-        ...data,
-        buy_price: Number((data.buy_price ?? 0) + EXCHANGE_RATE_ADJUSTMENT),
-      };
+      console.log('Current exchange rate:', data);
 
-      console.log('Current exchange rate (adjusted):', adjustedData);
-
-      return adjustedData;
+      return data;
     }),
 
   /**

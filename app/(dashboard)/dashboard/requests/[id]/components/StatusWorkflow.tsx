@@ -56,15 +56,30 @@ export const StatusWorkflow: React.FC<StatusWorkflowProps> = ({
   isUpdatingStatus,
   onStatusChange,
 }) => {
+  const [animatingStatus, setAnimatingStatus] = React.useState<PurchaseRequestStatus | null>(null);
+  
   const statusOrder: PurchaseRequestStatus[] = ["pending", "in_progress", "in_transit", "delivered", "completed"];
   const currentStatusIndex = statusOrder.indexOf(currentActualStatus);
   const availableTransitions = getAvailableStatusTransitions(currentActualStatus);
 
+  // Trigger animation when status changes
+  React.useEffect(() => {
+    if (isUpdatingStatus) {
+      setAnimatingStatus(currentActualStatus);
+    } else {
+      // Clear animation after a delay when update completes
+      const timer = setTimeout(() => setAnimatingStatus(null), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [isUpdatingStatus, currentActualStatus]);
+
   const workflowSteps = statusOrder.map((status) => {
-    const isCurrent = status === currentActualStatus; // Use status for comparison
+    const isCurrent = status === currentActualStatus;
     const isPast = currentStatusIndex > -1 && statusOrder.indexOf(status) < currentStatusIndex;
     const isAvailable = availableTransitions.includes(status) && !isCurrent && !isPast;
     const isFuture = !isCurrent && !isPast && !isAvailable;
+    const isAnimating = animatingStatus === status && !isUpdatingStatus;
+    
     return {
       status,
       label: getStatusLocalLabel(status),
@@ -72,6 +87,7 @@ export const StatusWorkflow: React.FC<StatusWorkflowProps> = ({
       isPast,
       isAvailable,
       isFuture,
+      isAnimating,
     };
   });
 
@@ -95,17 +111,32 @@ export const StatusWorkflow: React.FC<StatusWorkflowProps> = ({
                 >
                   {/* Dot indicator */}
                   <div className={cn(
-                    "relative flex items-center justify-center w-8 h-8 rounded-full border-2 transition-all shrink-0",
+                    "relative flex items-center justify-center w-8 h-8 rounded-full border-2 transition-all duration-300 shrink-0",
                     step.isCurrent && "bg-[#4D2DDA] border-[#4D2DDA] text-white shadow-md shadow-[#4D2DDA]/30",
                     step.isPast && "bg-[#4D2DDA]/20 border-[#4D2DDA]/50 text-[#4D2DDA]",
                     step.isAvailable && "bg-background border-border text-muted-foreground group-hover:border-[#4D2DDA] group-hover:text-[#4D2DDA] group-hover:shadow-sm",
-                    step.isFuture && "bg-background border-border/40 text-muted-foreground/30"
+                    step.isFuture && "bg-background border-border/40 text-muted-foreground/30",
+                    step.isAnimating && "animate-[pulse_0.6s_ease-in-out] scale-110"
                   )}>
-                    {step.isPast ? (
-                      <Check className="w-4 h-4 stroke-[2.5]" />
-                    ) : (
-                      getStatusLocalIcon(step.status, "w-4 h-4")
+                    {/* Ripple effect when animating */}
+                    {step.isAnimating && (
+                      <div className="absolute inset-0 rounded-full bg-[#4D2DDA] animate-ping opacity-75" />
                     )}
+                    <div className="relative z-10">
+                      {step.isPast ? (
+                        <Check className={cn(
+                          "w-4 h-4 stroke-[2.5] transition-transform duration-300",
+                          step.isAnimating && "scale-110"
+                        )} />
+                      ) : (
+                        <div className={cn(
+                          "transition-transform duration-300",
+                          step.isAnimating && "scale-110"
+                        )}>
+                          {getStatusLocalIcon(step.status, "w-4 h-4")}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   
                   {/* Label */}

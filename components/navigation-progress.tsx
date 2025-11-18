@@ -27,10 +27,10 @@ export function NavigationProgress() {
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [averageLoadTime, setAverageLoadTime] = useState<number>(0);
   const loadTimesRef = useRef<number[]>([]);
-  const [showPerformance, setShowPerformance] = useState<boolean>(false);
+  const [performanceData, setPerformanceData] = useState<{time: number, avg: number} | null>(null);
 
   // Calculate average load time
-  const updateAverageLoadTime = (newTime: number) => {
+  const updateAverageLoadTime = (newTime: number): number => {
     loadTimesRef.current.push(newTime);
     // Keep only last 10 measurements
     if (loadTimesRef.current.length > 10) {
@@ -38,6 +38,7 @@ export function NavigationProgress() {
     }
     const average = loadTimesRef.current.reduce((sum, time) => sum + time, 0) / loadTimesRef.current.length;
     setAverageLoadTime(average);
+    return average;
   };
 
   // Start navigation timing
@@ -59,7 +60,7 @@ export function NavigationProgress() {
     if (startTimeRef.current > 0) {
       const endTime = performance.now();
       const elapsed = endTime - startTimeRef.current;
-      updateAverageLoadTime(elapsed);
+      const currentAvg = updateAverageLoadTime(elapsed);
       
       setNavigationState(prev => ({
         ...prev,
@@ -68,18 +69,16 @@ export function NavigationProgress() {
         isInitialLoad: false,
       }));
       
-      // Mostrar el performance indicator
-      setShowPerformance(true);
-      console.log('Mostrando performance indicator');
+      // Mostrar el performance indicator con datos
+      setPerformanceData({ time: elapsed, avg: currentAvg });
       
-      // Ocultar después de 2 segundos
+      // Ocultar después de 3 segundos
       if (hideTimeoutRef.current) {
         clearTimeout(hideTimeoutRef.current);
       }
       hideTimeoutRef.current = setTimeout(() => {
-        console.log('Ocultando performance indicator');
-        setShowPerformance(false);
-      }, 2000);
+        setPerformanceData(null);
+      }, 3000);
       
       startTimeRef.current = 0;
     }
@@ -229,27 +228,26 @@ export function NavigationProgress() {
       )}
 
       {/* Performance indicator */}
-      {!navigationState.isNavigating && navigationState.loadTime > 0 && (
+      {!navigationState.isNavigating && performanceData && (
         <div className={cn(
           "flex items-center gap-3 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm",
           "border border-gray-200/50 dark:border-gray-700/50",
           "px-3 py-2 rounded-lg shadow-md",
-          "transition-all duration-300",
-          showPerformance ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-5 pointer-events-none"
+          "animate-in fade-in slide-in-from-top-5 duration-300"
         )}>
           <div className="flex items-center gap-2">
-            {navigationState.loadTime < 300 ? (
+            {performanceData.time < 300 ? (
               <Zap className="h-4 w-4 text-green-600" />
             ) : (
               <Timer className="h-4 w-4 text-gray-600" />
             )}
             <div className="flex flex-col">
-              <span className={cn("text-sm font-medium", getPerformanceColor(navigationState.loadTime))}>
-                {formatTime(navigationState.loadTime)}
+              <span className={cn("text-sm font-medium", getPerformanceColor(performanceData.time))}>
+                {formatTime(performanceData.time)}
               </span>
-              {averageLoadTime > 0 && averageLoadTime !== navigationState.loadTime && (
+              {performanceData.avg > 0 && performanceData.avg !== performanceData.time && (
                 <span className="text-xs text-muted-foreground">
-                  Avg: {formatTime(averageLoadTime)}
+                  Avg: {formatTime(performanceData.avg)}
                 </span>
               )}
             </div>

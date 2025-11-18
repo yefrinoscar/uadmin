@@ -20,42 +20,38 @@ import { formatCurrency } from "@/lib/utils";
 import { useRequestDetailStore } from "@/store/requestDetailStore";
 import { PurchaseRequestStatus, purchaseRequestStatusLabels } from "../../types";
 import Image from "next/image";
-import { usePricingCalculations } from "@/hooks/usePricingCalculations";
 import html2canvas from "html2canvas";
 import generatePdf from 'react-to-pdf';
 
+type CurrencyDisplay = 'USD' | 'PEN' | 'BOTH';
+
 export function RequestPreviewDrawer() {
-  const { request, exchangeRate } = useRequestDetailStore();
+  const { request, getCalculatedPricing } = useRequestDetailStore();
   const contentRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [currencyDisplay, setCurrencyDisplay] = useState<CurrencyDisplay>('BOTH');
   
   // Determine if it's a quote or an order based on status
   const products = request?.products ?? [];
   const isPending = request?.status === "pending";
   const documentType = isPending ? "Cotización" : "Pedido";
   
-  const pricing = usePricingCalculations({
-    basePrice: products.reduce((sum, p) => sum + (p.base_price || 0), 0),
-    weight: products.reduce((sum, p) => sum + (p.weight || 0), 0),
-    initialMarginPEN: 0,
-    initialTaxPercentage: 0
-  })
-
-  // Extract just what we need for the parent component
-  const { totalCosts: shippingCostsUSD } = pricing
-
-  // Calculate totals
-  const subtotal = products.reduce((sum, p) => sum + (p.price || 0), 0);
-  const profit = products.reduce((sum, p) => sum + (p.profit_amount || 0), 0);
-  const subtotalPEN = (subtotal * exchangeRate);
-  const shippingCostsPEN = shippingCostsUSD * exchangeRate;
+  // Obtener todos los cálculos del store (igual que TotalSummaryCard)
+  const pricing = getCalculatedPricing();
   
-  // Get profit from store
-  const profitPEN = profit;
+  const {
+    subTotal,
+    totalShippingCost,
+    totalProfitUSD,
+    finalPriceUSD,
+    exchangeRate
+  } = pricing;
   
-  // Calculate totals using values from the store when available
-  const total = (subtotalPEN + shippingCostsPEN + profitPEN);
-  const totalUSD = total / exchangeRate;
+  // Conversiones a PEN
+  const subtotalPEN = subTotal * exchangeRate;
+  const shippingCostsPEN = totalShippingCost * exchangeRate;
+  const totalProfitPEN = totalProfitUSD * exchangeRate;
+  const finalPricePEN = finalPriceUSD * exchangeRate;
 
   const formattedDate = request?.created_at 
     ? new Date(request.created_at).toLocaleDateString('es-PE', {
@@ -64,6 +60,17 @@ export function RequestPreviewDrawer() {
         year: 'numeric'
       })
     : '';
+
+  // Helper function to format price based on currency display setting
+  const formatPrice = (usdValue: number, penValue: number) => {
+    if (currencyDisplay === 'USD') {
+      return formatCurrency(usdValue);
+    } else if (currencyDisplay === 'PEN') {
+      return `S/. ${formatCurrency(penValue, "PEN")}`;
+    } else {
+      return `${formatCurrency(usdValue)} (S/. ${formatCurrency(penValue, "PEN")})`;
+    }
+  };
 
   // Utility function to prepare the clone for export - avoiding oklch colors
   const prepareElementForExport = () => {
@@ -563,10 +570,37 @@ export function RequestPreviewDrawer() {
       <DrawerContent className="w-full min-w-[650px] max-w-[90%] sm:max-w-[700px]">
         <div className="mx-auto w-full max-w-4xl">
           <DrawerHeader>
-            <DrawerTitle className="text-xl font-bold">Vista Previa de {documentType}</DrawerTitle>
-            <DrawerDescription>
-              Visualización lista para ser exportada y compartida con el cliente
-            </DrawerDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <DrawerTitle className="text-xl font-bold">Vista Previa de {documentType}</DrawerTitle>
+                <DrawerDescription>
+                  Visualización lista para ser exportada y compartida con el cliente
+                </DrawerDescription>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant={currencyDisplay === 'USD' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setCurrencyDisplay('USD')}
+                >
+                  USD
+                </Button>
+                <Button
+                  variant={currencyDisplay === 'PEN' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setCurrencyDisplay('PEN')}
+                >
+                  PEN
+                </Button>
+                <Button
+                  variant={currencyDisplay === 'BOTH' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setCurrencyDisplay('BOTH')}
+                >
+                  Ambos
+                </Button>
+              </div>
+            </div>
           </DrawerHeader>
 
           <div className="p-4 overflow-y-auto max-h-[calc(100vh-200px)]">
@@ -595,9 +629,6 @@ export function RequestPreviewDrawer() {
                 <div className="text-right flex flex-col items-end">
                   <h2 className="text-lg font-semibold text-gray-700">{documentType} #{request?.id?.slice(-6)}</h2>
                   <p className="text-gray-500 text-sm">{formattedDate}</p>
-                  <div className="mt-2 flex justify-center">
-                    {request?.status && getStatusDisplay(request.status as PurchaseRequestStatus)}
-                  </div>
                 </div>
               </div>
               
@@ -646,16 +677,16 @@ export function RequestPreviewDrawer() {
               <div className="bg-gray-50 p-4 rounded-lg space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Subtotal:</span>
-                  <span>{formatCurrency(subtotal)}</span>
+                  <span>{formatPrice(subTotal, subtotalPEN)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Gastos de envío y gestión:</span>
-                  <span>{formatCurrency(shippingCostsUSD + (profitPEN / exchangeRate))}</span>
+                  <span>{formatPrice(totalShippingCost + totalProfitUSD, shippingCostsPEN + totalProfitPEN)}</span>
                 </div>
                 <Separator className="my-2" />
                 <div className="flex justify-between font-bold">
                   <span>Precio Final:</span>
-                  <span>{formatCurrency(totalUSD)} (S/. {formatCurrency(total, "PEN")})</span>
+                  <span>{formatPrice(finalPriceUSD, finalPricePEN)}</span>
                 </div>
               </div>
               

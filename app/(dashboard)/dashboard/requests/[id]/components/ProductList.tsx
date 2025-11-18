@@ -109,15 +109,6 @@ const EditableCell = React.memo<EditableCellProps<Product>>(function EditableCel
     }
   }, [initialValue, isEditing]);
   
-  // Special case for weight = 0 (digital product)
-  if (field === 'weight' && Number(value) === 0) {
-    return (
-      <Badge variant="outline" className="bg-blue-950/20 text-blue-400 border-blue-800/30 hover:bg-blue-900/30 transition-colors">
-        Digital
-      </Badge>
-    );
-  }
-  
   // Special case for product cell with avatar - removed from reusable component
   if (field === 'title') {
     return isEditing ? (
@@ -156,7 +147,7 @@ const EditableCell = React.memo<EditableCellProps<Product>>(function EditableCel
           onBlur={onBlur}
           onKeyDown={onKeyDown}
           className={`w-full rounded-md border border-border bg-background focus:border-primary focus:ring-1 focus:ring-primary ${field === 'base_price' || field === 'profit_amount' || field === 'price' ? 'pl-6' : 'pl-3'} py-1.5 text-sm`}
-          min={field === 'weight' ? 0.1 : 0}
+          min={0}
           step={field === 'weight' ? 0.1 : 0.01}
           type="number"
           autoFocus
@@ -171,6 +162,19 @@ const EditableCell = React.memo<EditableCellProps<Product>>(function EditableCel
   }
   
   // Default display mode
+  // Special case for weight = 0 (digital product) - only in display mode
+  if (field === 'weight' && Number(value) === 0) {
+    return (
+      <Badge 
+        variant="outline" 
+        className="bg-blue-950/20 text-blue-400 border-blue-800/30 hover:bg-blue-900/30 transition-colors cursor-pointer"
+        onClick={() => table.options.meta?.startEdit(productId, field)}
+      >
+        Digital
+      </Badge>
+    );
+  }
+  
   return (
     <span 
       className={`cursor-pointer hover:text-primary transition-colors duration-200 py-1 px-1 rounded hover:bg-accent ${field === 'price' ? 'font-medium' : ''}`}
@@ -632,6 +636,12 @@ export default function ProductList({ requestId, products: initialProducts }: Pr
         const updatedProduct = calculateUpdatedProduct(productToUpdate, field, value);
         if (!updatedProduct) return; // Invalid input
         
+        // Update local state immediately for instant UI feedback
+        const updatedProducts = currentProducts.map(p => 
+          p.id === productId ? updatedProduct : p
+        );
+        setProducts(updatedProducts);
+        
         // Send the update to the server in the background (debounced)
         debouncedUpdateServer(updatedProduct);
       }
@@ -642,10 +652,22 @@ export default function ProductList({ requestId, products: initialProducts }: Pr
     <Card className="py-0">
       <CardContent className="p-0">
         {products.length === 0 ? (
-          <div className="flex min-h-[250px] flex-col items-center justify-center p-6 text-center text-muted-foreground">
-            <PlusCircle className="h-10 w-10 mb-2 text-muted-foreground/50" />
-            <h3 className="text-lg font-medium mb-1">No hay productos</h3>
-            <p>Haz clic en Agregar producto para comenzar.</p>
+          <div className="flex min-h-[250px] flex-col items-center justify-center gap-3 p-6 text-center text-muted-foreground">
+            <PlusCircle className="h-10 w-10 text-muted-foreground/50" />
+            <div>
+              <h3 className="text-lg font-medium text-foreground">No hay productos</h3>
+              <p>Haz clic en Agregar producto para comenzar.</p>
+            </div>
+            <AddProductDialog
+              onAddProduct={(product) => {
+                handleUpdateProduct(product)
+              }}
+            >
+              <Button className="gap-2">
+                <PlusCircle className="h-4 w-4" />
+                Agregar producto
+              </Button>
+            </AddProductDialog>
           </div>
         ) : (
           <ScrollArea className="min-h-[200px]">

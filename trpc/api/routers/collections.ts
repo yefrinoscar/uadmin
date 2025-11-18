@@ -326,7 +326,7 @@ export const collectionsRouter = router({
         .single();
 
       // Delete old banner file if it exists and we're uploading a new one
-      if (currentCollection?.banner_url && updateData.banner_url && updateData.banner_url.startsWith('data:image') && currentCollection.banner_url.includes('/collections/')) {
+      if (currentCollection?.banner_url && updateData.banner_url && updateData.banner_url !== currentCollection.banner_url && currentCollection.banner_url.includes('/collections/')) {
         const fileName = currentCollection.banner_url.split('/').pop();
         if (fileName) {
           await ctx.supabase.storage.from('images').remove([`collections/${fileName}`]);
@@ -334,7 +334,7 @@ export const collectionsRouter = router({
       }
 
       // Delete old video file if it exists and we're uploading a new one
-      if (currentCollection?.video_url && updateData.video_url && updateData.video_url.startsWith('data:video') && currentCollection.video_url.includes('/collections/')) {
+      if (currentCollection?.video_url && updateData.video_url && updateData.video_url !== currentCollection.video_url && currentCollection.video_url.includes('/collections/')) {
         const fileName = currentCollection.video_url.split('/').pop();
         if (fileName) {
           await ctx.supabase.storage.from('images').remove([`collections/${fileName}`]);
@@ -357,7 +357,7 @@ export const collectionsRouter = router({
         }
       }
 
-      // Process banner upload if it's a data URL
+      // Process banner upload if it's a data URL (legacy support)
       let processedData = { ...updateData };
 
       if (updateData.banner_url && updateData.banner_url.startsWith('data:image')) {
@@ -396,7 +396,7 @@ export const collectionsRouter = router({
         processedData.banner_url = publicUrlData.publicUrl;
       }
 
-      // Process video upload if it's a data URL
+      // Process video upload if it's a data URL (legacy support)
       if (updateData.video_url && updateData.video_url.startsWith('data:video')) {
         const base64Data = updateData.video_url.split(',')[1];
         if (!base64Data) {

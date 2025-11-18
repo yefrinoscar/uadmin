@@ -685,6 +685,7 @@ export const requestsRouter = router({
               image_url: processedProduct.image_url || null,
               base_price: processedProduct.base_price,
               profit_amount: processedProduct.profit_amount,
+              tax: processedProduct.tax,
               updated_at: new Date().toISOString()
             })
             .eq("request_id", requestId)
